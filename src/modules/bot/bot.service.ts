@@ -189,6 +189,10 @@ export class BotService {
     return await this.exchangeRequestService.getActiveRequests();
   }
 
+  async getConfirmedRequests() {
+    return await this.exchangeRequestService.getConfirmedRequests();
+  }
+
   async notifyAdminAboutBooking(requestId: number, action: string): Promise<void> {
     const request = await this.exchangeRequestService.findById(requestId);
     

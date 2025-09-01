@@ -41,13 +41,18 @@ export class ExchangeRequestService {
     totalAmount: number,
   ): Promise<void> {
     try {
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // + 15 минут
+
       const result = await this.exchangeRequestRepository.update(id, {
         exchangeRate,
         adminResponse,
         totalAmount,
-        status: RequestStatus.PROCESSING,
+        status: RequestStatus.CONFIRMED,
+        confirmedAt: now,
+        expiresAt,
       });
-      console.log(`Обновлена заявка #${id}:`, { exchangeRate, adminResponse, totalAmount });
+      console.log(`Обновлена заявка #${id}:`, { exchangeRate, adminResponse, totalAmount, expiresAt });
     } catch (error) {
       console.error('Ошибка обновления заявки:', error);
       throw error;
@@ -63,6 +68,52 @@ export class ExchangeRequestService {
       where: { status: RequestStatus.PENDING },
       relations: ['user'],
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getConfirmedRequests(): Promise<ExchangeRequest[]> {
+    const now = new Date();
+    return await this.exchangeRequestRepository.find({
+      where: [
+        { status: RequestStatus.CONFIRMED },
+        { status: RequestStatus.BOOKED },
+        { status: RequestStatus.WAITING_CLIENT }
+      ],
+      relations: ['user'],
+      order: { confirmedAt: 'DESC' },
+    });
+  }
+
+  async setBookedStatus(id: number): Promise<void> {
+    const now = new Date();
+    await this.exchangeRequestRepository.update(id, {
+      status: RequestStatus.BOOKED,
+      bookedAt: now,
+    });
+  }
+
+  async setWaitingClientStatus(id: number): Promise<void> {
+    await this.exchangeRequestRepository.update(id, {
+      status: RequestStatus.WAITING_CLIENT,
+    });
+  }
+
+  async getExpiredRequests(): Promise<ExchangeRequest[]> {
+    const now = new Date();
+    return await this.exchangeRequestRepository
+      .createQueryBuilder('request')
+      .leftJoinAndSelect('request.user', 'user')
+      .where('request.expiresAt < :now', { now })
+      .andWhere('request.status IN (:...statuses)', { 
+        statuses: [RequestStatus.CONFIRMED, RequestStatus.BOOKED, RequestStatus.WAITING_CLIENT] 
+      })
+      .getMany();
+  }
+
+  async markAsExpired(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.exchangeRequestRepository.update(ids, {
+      status: RequestStatus.EXPIRED,
     });
   }
 }

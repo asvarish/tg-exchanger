@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Update, Ctx, Start, Command, On, Message, Action } from 'nestjs-telegraf';
 import { BotService } from './bot.service';
 import { UserService } from './services/user.service';
+import { ExchangeRequestService } from './services/exchange-request.service';
 import { UserState } from '../../common/enums/user-state.enum';
-import { OperationType, CurrencyType } from '../../common/entities/exchange-request.entity';
+import { OperationType, CurrencyType, RequestStatus } from '../../common/entities/exchange-request.entity';
 
 @Injectable()
 @Update()
@@ -11,6 +12,7 @@ export class BotUpdate {
   constructor(
     private readonly botService: BotService,
     private readonly userService: UserService,
+    private readonly exchangeRequestService: ExchangeRequestService,
   ) {}
 
     @Start()
@@ -121,7 +123,8 @@ export class BotUpdate {
     const keyboard = {
       inline_keyboard: [
         [
-          { text: '📋 Активные заявки', callback_data: 'admin_active_requests' },
+          { text: '📋 Новые заявки', callback_data: 'admin_active_requests' },
+          { text: '✅ Подтвержденные', callback_data: 'admin_confirmed_requests' },
         ],
         [
           { text: '📊 Статистика', callback_data: 'admin_stats' },
@@ -144,11 +147,11 @@ export class BotUpdate {
     const activeRequests = await this.botService.getActiveRequests();
     
     if (activeRequests.length === 0) {
-      await ctx.editMessageText('📝 Нет активных заявок');
+      await ctx.editMessageText('📝 Нет новых заявок');
       return;
     }
 
-    let message = '📋 Активные заявки:\n\n';
+    let message = '📋 Новые заявки:\n\n';
     const keyboard = [];
 
     for (const request of activeRequests) {
@@ -164,12 +167,84 @@ export class BotUpdate {
           text: `💬 Ответить на заявку #${request.id}`,
           callback_data: `respond_${request.id}`,
         },
+        {
+          text: `❌ Отменить #${request.id}`,
+          callback_data: `cancel_${request.id}`,
+        },
       ]);
     }
 
     await ctx.editMessageText(message, {
       reply_markup: { inline_keyboard: keyboard },
     });
+  }
+
+  @Action('admin_confirmed_requests')
+  async showConfirmedRequests(@Ctx() ctx: any) {
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    const confirmedRequests = await this.botService.getConfirmedRequests();
+    
+    if (confirmedRequests.length === 0) {
+      await ctx.editMessageText('📝 Нет подтвержденных заявок');
+      return;
+    }
+
+    let message = '✅ Подтвержденные заявки (действуют 15 мин):\n\n';
+    const keyboard = [];
+
+    for (const request of confirmedRequests) {
+      const operationType = request.operationType === 'buy' ? 'Покупка' : 'Продажа';
+      const statusText = this.getStatusText(request.status);
+      const timeLeft = this.getTimeLeft(request.expiresAt);
+      
+      message += `🔹 Заявка #${request.id} ${statusText}\n`;
+      message += `👤 @${request.user.username || request.user.firstName}\n`;
+      message += `💱 ${operationType} ${request.amount} ${request.currency}\n`;
+      message += `💰 Курс: ${request.exchangeRate}\n`;
+      message += `⏰ ${timeLeft}\n`;
+      message += `📅 ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n\n`;
+
+      // Добавляем кнопку отмены для каждой заявки
+      keyboard.push([
+        {
+          text: `❌ Отменить заявку #${request.id}`,
+          callback_data: `cancel_${request.id}`,
+        },
+      ]);
+    }
+
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  }
+
+  private getStatusText(status: string): string {
+    const statusMap = {
+      'confirmed': '⏳ Ожидает ответа',
+      'booked': '✅ Забронирована',
+      'waiting_client': '💬 Ждет клиента',
+    };
+    return statusMap[status] || status;
+  }
+
+  private getTimeLeft(expiresAt: Date): string {
+    const now = new Date();
+    const diffMs = new Date(expiresAt).getTime() - now.getTime();
+    
+    if (diffMs <= 0) {
+      return '❌ Истекла';
+    }
+    
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    
+    return `Осталось: ${diffMinutes}м ${diffSeconds}с`;
   }
 
   @Action(/respond_(\d+)/)
@@ -228,6 +303,67 @@ export class BotUpdate {
     await ctx.answerCbQuery('❌ Заявка отклонена');
   }
 
+  @Action(/cancel_(\d+)/)
+  async onCancelRequest(@Ctx() ctx: any) {
+    const requestId = parseInt(ctx.match[1]);
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    // Получаем заявку
+    const request = await this.botService.getRequestById(requestId);
+    if (!request) {
+      await ctx.answerCbQuery('❌ Заявка не найдена');
+      return;
+    }
+
+    // Отменяем заявку в базе данных
+    await this.exchangeRequestService.updateRequestStatus(requestId, RequestStatus.CANCELLED);
+
+    // Отправляем уведомление в админ-канал об отмене
+    await this.botService.notifyAdminAboutBooking(requestId, 'cancelled');
+
+    // Отправляем уведомление пользователю об отмене
+    try {
+      const operationType = request.operationType === 'buy' ? 'покупку' : 'продажу';
+      await ctx.telegram.sendMessage(
+        request.user.telegramId,
+        `❌ Ваша заявка #${requestId} была отменена администратором.
+
+📋 Заявка: ${operationType} ${request.amount} ${request.currency}
+🏙️ Город: ${request.city}
+
+Вы можете создать новую заявку командой /start`
+      );
+    } catch (error) {
+      console.error('Ошибка отправки уведомления об отмене:', error);
+    }
+
+    // Обновляем сообщение в чате админа
+    try {
+      await ctx.editMessageText(
+        `❌ Заявка #${requestId} ОТМЕНЕНА
+
+👤 Клиент: @${request.user.username || request.user.firstName}
+📞 Telegram ID: ${request.user.telegramId}
+💱 Операция: ${request.operationType === 'buy' ? 'Покупка' : 'Продажа'}
+💰 Валюта: ${request.currency}
+💵 Сумма: ${request.amount}
+🏙️ Город: ${request.city}
+📅 Отменена: ${new Date().toLocaleString('ru-RU')}`,
+        { reply_markup: undefined }
+      );
+    } catch (error) {
+      // Если не удалось отредактировать, просто отвечаем
+      console.error('Ошибка редактирования сообщения:', error);
+    }
+
+    await ctx.answerCbQuery('❌ Заявка отменена');
+  }
+
   @On('text')
   async onText(@Ctx() ctx: any, @Message('text') message: string) {
     // Логируем ID чата для получения админ-чата
@@ -268,10 +404,13 @@ export class BotUpdate {
     await ctx.reply(`✅ Ответ отправлен клиенту по заявке #${requestId}`);
   }
 
-  @Action(/book_(\d+)/)
+    @Action(/book_(\d+)/)
   async onBookRequest(@Ctx() ctx: any) {
     const requestId = parseInt(ctx.match[1]);
-    
+
+    // Обновляем статус заявки на BOOKED
+    await this.exchangeRequestService.setBookedStatus(requestId);
+
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
       ctx.callbackQuery.message.text + '\n\n✅ Заявка забронирована!',
@@ -280,7 +419,7 @@ export class BotUpdate {
 
     // Уведомляем админа о бронировании
     await this.botService.notifyAdminAboutBooking(requestId, 'book');
-    
+
     await ctx.answerCbQuery('✅ Заявка забронирована!');
   }
 
@@ -300,10 +439,13 @@ export class BotUpdate {
     await ctx.answerCbQuery('💬 Спасибо за обращение!');
   }
 
-  @Action(/wait_info_(\d+)/)
+    @Action(/wait_info_(\d+)/)
   async onWaitInfoRequest(@Ctx() ctx: any) {
     const requestId = parseInt(ctx.match[1]);
-    
+
+    // Обновляем статус заявки на WAITING_CLIENT
+    await this.exchangeRequestService.setWaitingClientStatus(requestId);
+
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
       ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию',
@@ -312,7 +454,7 @@ export class BotUpdate {
 
     // Уведомляем админа
     await this.botService.notifyAdminAboutBooking(requestId, 'wait_info');
-    
+
     await ctx.answerCbQuery('⏳ Ожидаем информацию');
   }
 

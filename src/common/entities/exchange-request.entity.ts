@@ -9,6 +9,10 @@ export enum OperationType {
 export enum RequestStatus {
   PENDING = 'pending',
   PROCESSING = 'processing',
+  CONFIRMED = 'confirmed', // Админ ответил с курсом
+  BOOKED = 'booked', // Пользователь забронировал
+  WAITING_CLIENT = 'waiting_client', // Ждет информацию от клиента
+  EXPIRED = 'expired', // Истек срок действия
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
 }
@@ -51,6 +55,15 @@ export class ExchangeRequest {
 
   @Column({ type: 'bigint', nullable: true })
   adminMessageId: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  confirmedAt: Date; // Время ответа админа
+
+  @Column({ type: 'timestamp', nullable: true })
+  bookedAt: Date; // Время бронирования пользователем
+
+  @Column({ type: 'timestamp', nullable: true })
+  expiresAt: Date; // Время истечения курса
 
   @Column({ type: 'bigint' })
   userId: number;
