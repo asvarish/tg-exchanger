@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ExchangeRequest, OperationType, CurrencyType, RequestStatus } from '../../../common/entities/exchange-request.entity';
+import { ExchangeRequest, RequestStatus } from '../../../common/entities/exchange-request.entity';
 
 export interface CreateExchangeRequestDto {
   userId: number;
-  operationType: OperationType;
-  currency: CurrencyType;
   amount: number;
   city: string;
 }
@@ -114,6 +112,22 @@ export class ExchangeRequestService {
     if (ids.length === 0) return;
     await this.exchangeRequestRepository.update(ids, {
       status: RequestStatus.EXPIRED,
+    });
+  }
+
+  async getRecentRequests(limit: number = 20): Promise<ExchangeRequest[]> {
+    return await this.exchangeRequestRepository.find({
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async getWaitingClientRequests(): Promise<ExchangeRequest[]> {
+    return await this.exchangeRequestRepository.find({
+      where: { status: RequestStatus.WAITING_CLIENT },
+      relations: ['user'],
+      order: { updatedAt: 'ASC' },
     });
   }
 }

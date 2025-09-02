@@ -4,7 +4,8 @@ import { BotService } from './bot.service';
 import { UserService } from './services/user.service';
 import { ExchangeRequestService } from './services/exchange-request.service';
 import { UserState } from '../../common/enums/user-state.enum';
-import { OperationType, CurrencyType, RequestStatus } from '../../common/entities/exchange-request.entity';
+import { RequestStatus } from '../../common/entities/exchange-request.entity';
+import { AdminNotificationService } from './services/admin-notification.service';
 
 @Injectable()
 @Update()
@@ -13,6 +14,7 @@ export class BotUpdate {
     private readonly botService: BotService,
     private readonly userService: UserService,
     private readonly exchangeRequestService: ExchangeRequestService,
+    private readonly adminNotificationService: AdminNotificationService,
   ) {}
 
     @Start()
@@ -61,14 +63,9 @@ export class BotUpdate {
       return;
     }
 
-    // Обычный старт для клиентов
+    // Обычный старт для клиентов - отправляем дефолтное меню
     const user = await this.userService.findOrCreateUser(ctx.from);
-    await this.userService.updateUserState(user.id, UserState.START);
-
-    const { text, keyboard } = await this.botService.getStartMessage();
-    await ctx.reply(text, {
-      reply_markup: keyboard,
-    });
+    await this.botService.sendDefaultMenu(ctx.from.id, user.isAdmin);
   }
 
   @Command('help')
@@ -77,38 +74,7 @@ export class BotUpdate {
     await ctx.reply(message);
   }
 
-  @Action(/operation_(.+)/)
-  async onOperationSelect(@Ctx() ctx: any) {
-    const operation = ctx.match[1] as OperationType;
-    const user = await this.userService.findOrCreateUser(ctx.from);
 
-    await this.userService.setUserTempData(user.id, 'operationType', operation);
-    await this.userService.updateUserState(user.id, UserState.CHOOSING_CURRENCY);
-
-    const operationText = operation === 'buy' ? 'покупку' : 'продажу';
-    await ctx.editMessageText(
-      `💱 Вы выбрали ${operationText} валюты.\n\nВыберите валюту:`,
-      {
-        reply_markup: this.botService.getCurrencyKeyboard(),
-      }
-    );
-  }
-
-  @Action(/currency_(.+)/)
-  async onCurrencySelect(@Ctx() ctx: any) {
-    const currency = ctx.match[1] as CurrencyType;
-    const user = await this.userService.findOrCreateUser(ctx.from);
-
-    await this.userService.setUserTempData(user.id, 'currency', currency);
-    await this.userService.updateUserState(user.id, UserState.ENTERING_AMOUNT);
-
-    const operationType = await this.userService.getUserTempData(user.id, 'operationType');
-    const operationText = operationType === 'buy' ? 'покупаете' : 'продаете';
-    
-    await ctx.editMessageText(
-      `💰 Вы ${operationText} ${this.botService.formatCurrency(currency)}\n\n💵 Введите сумму:`
-    );
-  }
 
   @Command('admin')
   async adminCommand(@Ctx() ctx: any) {
@@ -127,7 +93,7 @@ export class BotUpdate {
           { text: '✅ Подтвержденные', callback_data: 'admin_confirmed_requests' },
         ],
         [
-          { text: '📊 Статистика', callback_data: 'admin_stats' },
+          { text: '📊 История', callback_data: 'admin_stats' },
         ],
       ],
     };
@@ -155,10 +121,9 @@ export class BotUpdate {
     const keyboard = [];
 
     for (const request of activeRequests) {
-      const operationType = request.operationType === 'buy' ? 'Покупка' : 'Продажа';
       message += `🔹 Заявка #${request.id}\n`;
       message += `👤 @${request.user.username || request.user.firstName}\n`;
-      message += `💱 ${operationType} ${request.amount} ${request.currency}\n`;
+      message += `💱 покупка ${request.amount} USDT\n`;
       message += `🏙️ Город: ${request.city}\n`;
       message += `📅 ${new Date(request.createdAt).toLocaleString('ru-RU')}\n\n`;
 
@@ -199,14 +164,17 @@ export class BotUpdate {
     const keyboard = [];
 
     for (const request of confirmedRequests) {
-      const operationType = request.operationType === 'buy' ? 'Покупка' : 'Продажа';
       const statusText = this.getStatusText(request.status);
       const timeLeft = this.getTimeLeft(request.expiresAt);
       
+      // Рассчитываем стоимость в рублях
+      const totalRub = request.exchangeRate * request.amount;
+      
       message += `🔹 Заявка #${request.id} ${statusText}\n`;
       message += `👤 @${request.user.username || request.user.firstName}\n`;
-      message += `💱 ${operationType} ${request.amount} ${request.currency}\n`;
-      message += `💰 Курс: ${request.exchangeRate}\n`;
+      message += `💱 Покупка ${request.amount} USDT\n`;
+      message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
+      message += `💸 Итого: ${totalRub.toFixed(2)} ₽\n`;
       message += `⏰ ${timeLeft}\n`;
       message += `📅 ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n\n`;
 
@@ -224,11 +192,151 @@ export class BotUpdate {
     });
   }
 
+  @Action('admin_stats')
+  async showStats(@Ctx() ctx: any) {
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    const recentRequests = await this.botService.getRecentRequests(20);
+    
+    if (recentRequests.length === 0) {
+      await ctx.editMessageText('📊 Нет заявок для отображения');
+      return;
+    }
+
+    let message = '📊 История последних 20 заявок:\n\n';
+    const keyboard = [];
+
+    for (const request of recentRequests) {
+      const statusText = this.getStatusText(request.status);
+      const timeAgo = this.getTimeAgo(request.createdAt);
+      
+      message += `🔹 Заявка #${request.id} ${statusText}\n`;
+      message += `👤 @${request.user.username || request.user.firstName}\n`;
+      message += `💱 Покупка ${request.amount} USDT\n`;
+      message += `🏙️ Город: ${request.city}\n`;
+      message += `📅 ${timeAgo}\n`;
+      
+      if (request.exchangeRate) {
+        // Рассчитываем стоимость в рублях
+        const totalRub = request.exchangeRate * request.amount;
+        message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
+        message += `💸 Итого: ${totalRub.toFixed(2)} ₽\n`;
+      }
+      message += '\n';
+
+      // Добавляем кнопку просмотра деталей
+      keyboard.push([
+        {
+          text: `👁️ Детали #${request.id}`,
+          callback_data: `view_details_${request.id}`,
+        },
+      ]);
+    }
+
+    // Добавляем кнопку возврата в админ-панель
+    keyboard.push([
+      {
+        text: '🔙 Назад в админ-панель',
+        callback_data: 'admin_panel_back',
+      },
+    ]);
+
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  }
+
+  @Action('admin_panel_back')
+  async backToAdminPanel(@Ctx() ctx: any) {
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📋 Новые заявки', callback_data: 'admin_active_requests' },
+          { text: '✅ Подтвержденные', callback_data: 'admin_confirmed_requests' },
+        ],
+        [
+          { text: '📊 Статистика', callback_data: 'admin_stats' },
+        ],
+      ],
+    };
+
+    await ctx.editMessageText('🔧 Админ-панель', { reply_markup: keyboard });
+  }
+
+  @Action(/view_details_(\d+)/)
+  async viewRequestDetails(@Ctx() ctx: any) {
+    const requestId = parseInt(ctx.match[1]);
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    const request = await this.botService.getRequestById(requestId);
+    if (!request) {
+      await ctx.answerCbQuery('❌ Заявка не найдена');
+      return;
+    }
+
+    const statusText = this.getStatusText(request.status);
+    const timeAgo = this.getTimeAgo(request.createdAt);
+    
+    let message = `📋 Детали заявки #${request.id}\n\n`;
+    message += `👤 Клиент: @${request.user.username || request.user.firstName}\n`;
+    message += `📞 Telegram ID: ${request.user.telegramId}\n`;
+    message += `💱 Операция: Покупка ${request.amount} USDT\n`;
+    message += `🏙️ Город: ${request.city}\n`;
+    message += `📅 Создана: ${timeAgo}\n`;
+    message += `📊 Статус: ${statusText}\n`;
+    
+    if (request.exchangeRate) {
+      // Рассчитываем стоимость в рублях
+      const totalRub = request.exchangeRate * request.amount;
+      message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
+      message += `💸 Итого к оплате: ${totalRub.toFixed(2)} ₽\n`;
+      message += `📅 Подтверждена: ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n`;
+    }
+    
+    if (request.adminResponse) {
+      message += `💬 Ответ админа: ${request.adminResponse}\n`;
+    }
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '🔙 Назад к статистике',
+            callback_data: 'admin_stats',
+          },
+        ],
+      ],
+    };
+
+    await ctx.editMessageText(message, { reply_markup: keyboard });
+  }
+
   private getStatusText(status: string): string {
     const statusMap = {
+      'pending': '⏳ Ожидает ответа',
       'confirmed': '⏳ Ожидает ответа',
       'booked': '✅ Забронирована',
       'waiting_client': '💬 Ждет клиента',
+      'completed': '✅ Завершена',
+      'cancelled': '❌ Отменена',
+      'expired': '⏰ Истекла',
     };
     return statusMap[status] || status;
   }
@@ -245,6 +353,25 @@ export class BotUpdate {
     const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
     
     return `Осталось: ${diffMinutes}м ${diffSeconds}с`;
+  }
+
+  private getTimeAgo(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - new Date(date).getTime();
+    
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays > 0) {
+      return `${diffDays} дн. назад`;
+    } else if (diffHours > 0) {
+      return `${diffHours} ч. назад`;
+    } else if (diffMinutes > 0) {
+      return `${diffMinutes} мин. назад`;
+    } else {
+      return 'Только что';
+    }
   }
 
   @Action(/respond_(\d+)/)
@@ -328,12 +455,11 @@ export class BotUpdate {
 
     // Отправляем уведомление пользователю об отмене
     try {
-      const operationType = request.operationType === 'buy' ? 'покупку' : 'продажу';
       await ctx.telegram.sendMessage(
         request.user.telegramId,
         `❌ Ваша заявка #${requestId} была отменена администратором.
 
-📋 Заявка: ${operationType} ${request.amount} ${request.currency}
+📋 Заявка: Покупка ${request.amount} USDT
 🏙️ Город: ${request.city}
 
 Вы можете создать новую заявку командой /start`
@@ -349,8 +475,8 @@ export class BotUpdate {
 
 👤 Клиент: @${request.user.username || request.user.firstName}
 📞 Telegram ID: ${request.user.telegramId}
-💱 Операция: ${request.operationType === 'buy' ? 'Покупка' : 'Продажа'}
-💰 Валюта: ${request.currency}
+💱 Операция: покупка USDT
+💰 Валюта: ₮ USDT
 💵 Сумма: ${request.amount}
 🏙️ Город: ${request.city}
 📅 Отменена: ${new Date().toLocaleString('ru-RU')}`,
@@ -379,9 +505,25 @@ export class BotUpdate {
       await this.handleAdminResponse(ctx, message, adminRespondingTo);
       return;
     }
+
+    // Проверяем, нажал ли пользователь кнопку "💰 Купить USDT"
+    if (message === '💰 Купить USDT') {
+      await this.userService.updateUserState(user.id, UserState.ENTERING_AMOUNT);
+      // Отправляем сообщение без клавиатуры для ввода
+      await this.botService.sendInputKeyboard(ctx.from.id, '💰 Введите количество USDT, которое хотите купить:');
+      return;
+    }
     
     const response = await this.botService.processUserMessage(message, ctx.from, user.id);
-    await ctx.reply(response);
+    
+    // Если это сообщение об успешном создании заявки, возвращаем клавиатуру
+    if (response.includes('✅ Ваша заявка #') && response.includes('принята!')) {
+      await ctx.reply(response);
+      // Возвращаем клавиатуру с кнопкой "Купить USDT"
+      await this.botService.sendNoInputKeyboard(ctx.from.id, '💡 Можете создать новую заявку:');
+    } else {
+      await ctx.reply(response);
+    }
   }
 
   private async handleAdminResponse(@Ctx() ctx: any, message: string, requestId: number) {
@@ -404,7 +546,11 @@ export class BotUpdate {
     await ctx.reply(`✅ Ответ отправлен клиенту по заявке #${requestId}`);
   }
 
-    @Action(/book_(\d+)/)
+
+
+
+
+  @Action(/book_(\d+)/)
   async onBookRequest(@Ctx() ctx: any) {
     const requestId = parseInt(ctx.match[1]);
 
@@ -446,10 +592,21 @@ export class BotUpdate {
     // Обновляем статус заявки на WAITING_CLIENT
     await this.exchangeRequestService.setWaitingClientStatus(requestId);
 
-    // Обновляем сообщение пользователя
+    // Обновляем сообщение пользователя, оставляя только кнопку "Бронирую"
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Бронирую',
+            callback_data: `book_${requestId}`,
+          },
+        ],
+      ],
+    };
+
     await ctx.editMessageText(
-      ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию',
-      { reply_markup: undefined }
+      ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию. Курс действителен 15 минут.',
+      { reply_markup: keyboard }
     );
 
     // Уведомляем админа
@@ -461,5 +618,14 @@ export class BotUpdate {
   @On('sticker')
   async onSticker(@Ctx() ctx: any) {
     await ctx.reply('Используйте /start для работы с ботом 😊');
+  }
+
+  @Action('buy_usdt')
+  async onBuyUsdt(@Ctx() ctx: any) {
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    await this.userService.updateUserState(user.id, UserState.ENTERING_AMOUNT);
+
+    // Отправляем клавиатуру с force_reply для ожидания ввода
+    await this.botService.sendInputKeyboard(ctx.from.id, '💰 Введите количество USDT, которое хотите купить:');
   }
 }

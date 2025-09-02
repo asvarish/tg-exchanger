@@ -1,11 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from './user.entity';
 
-export enum OperationType {
-  BUY = 'buy',
-  SELL = 'sell',
-}
-
 export enum RequestStatus {
   PENDING = 'pending',
   PROCESSING = 'processing',
@@ -17,23 +12,10 @@ export enum RequestStatus {
   CANCELLED = 'cancelled',
 }
 
-export enum CurrencyType {
-  USD = 'USD',
-  EUR = 'EUR',
-  RUB = 'RUB',
-  USDT = 'USDT',
-}
-
 @Entity('exchange_requests')
 export class ExchangeRequest {
   @PrimaryGeneratedColumn()
   id: number;
-
-  @Column({ type: 'enum', enum: OperationType })
-  operationType: OperationType;
-
-  @Column({ type: 'enum', enum: CurrencyType })
-  currency: CurrencyType;
 
   @Column({ type: 'decimal', precision: 15, scale: 2 })
   amount: number;

@@ -3,12 +3,15 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 import { ExchangeRequestService } from './exchange-request.service';
+import { AdminNotificationService } from './admin-notification.service';
+import { RequestStatus } from '../../../common/entities/exchange-request.entity';
 
 @Injectable()
 export class ExpirationService {
   constructor(
     @InjectBot() private readonly bot: Telegraf,
     private readonly exchangeRequestService: ExchangeRequestService,
+    private readonly adminNotificationService: AdminNotificationService,
   ) {}
 
   @Cron('*/30 * * * * *') // Каждые 30 секунд
@@ -37,17 +40,57 @@ export class ExpirationService {
     }
   }
 
+  @Cron('*/30 * * * * *') // Каждые 30 секунд
+  async checkWaitingClientRequests() {
+    try {
+      const waitingRequests = await this.exchangeRequestService.getWaitingClientRequests();
+      
+      if (waitingRequests.length === 0) {
+        return;
+      }
+
+      const now = new Date();
+      
+      for (const request of waitingRequests) {
+        // Проверяем, прошло ли 15 минут с момента получения курса от админа (confirmedAt)
+        if (!request.confirmedAt) {
+          continue; // Пропускаем заявки без подтверждения
+        }
+
+        const timeSinceConfirmation = now.getTime() - new Date(request.confirmedAt).getTime();
+        const fifteenMinutes = 15 * 60 * 1000; // 15 минут в миллисекундах
+        
+        if (timeSinceConfirmation >= fifteenMinutes) {
+          // Отправляем сообщение об истечении времени и предлагаем создать новую заявку
+          await this.adminNotificationService.sendExpiredMessage(
+            request.user.telegramId,
+            request.id
+          );
+          
+          // Помечаем заявку как истекшую
+          await this.exchangeRequestService.updateRequestStatus(request.id, RequestStatus.EXPIRED);
+          
+          console.log(`Время ожидания истекло для заявки #${request.id}`);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке заявок в статусе WAITING_CLIENT:', error);
+    }
+  }
+
   private async notifyUserAboutExpiration(request: any) {
-    const operationType = request.operationType === 'buy' ? 'покупку' : 'продажу';
+    // Рассчитываем стоимость в рублях
+    const totalRub = request.exchangeRate * request.amount;
     
     const message = `⏰ Срок действия курса по заявке #${request.id} истек!
 
-📋 Заявка: ${operationType} ${request.amount} ${request.currency}
+📋 Заявка: покупка ${request.amount} USDT
 🏙️ Город: ${request.city}
-💱 Курс: ${request.exchangeRate}
+💱 Курс: ${request.exchangeRate} ₽ за 1 USDT
+💸 Итого: ${totalRub.toFixed(2)} ₽
 📅 Время истечения: ${new Date(request.expiresAt).toLocaleString('ru-RU')}
 
-Для получения актуального курса создайте новую заявку командой /start`;
+Для получения актуального курса используйте кнопку "💰 Купить USDT" на клавиатуре`;
 
     try {
       await this.bot.telegram.sendMessage(request.user.telegramId, message);

@@ -4,6 +4,7 @@ import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 import { ExchangeRequest } from '../../../common/entities/exchange-request.entity';
 import { User } from '../../../common/entities/user.entity';
+import { InlineKeyboardMarkup } from 'telegraf/types';
 
 @Injectable()
 export class AdminNotificationService {
@@ -11,6 +12,92 @@ export class AdminNotificationService {
     @InjectBot() private bot: Telegraf,
     private configService: ConfigService,
   ) {}
+
+  async sendDefaultMenu(telegramId: number, isAdmin: boolean): Promise<void> {
+    if (isAdmin) {
+      const adminKeyboard: InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📋 Новые заявки', callback_data: 'admin_active_requests' },
+            { text: '✅ Подтвержденные', callback_data: 'admin_confirmed_requests' },
+          ],
+          [
+            { text: '📊 История', callback_data: 'admin_stats' },
+          ],
+        ],
+      };
+
+      await this.bot.telegram.sendMessage(
+        telegramId,
+        '🔧 Админ-панель',
+        { reply_markup: adminKeyboard }
+      );
+    } else {
+      // Обычная клавиатура Telegram (не inline)
+      const userKeyboard = {
+        keyboard: [
+          [{ text: '💰 Купить USDT' }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: false
+      };
+
+      // Inline-кнопка на приветственном сообщении
+      const inlineKeyboard: InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [
+            { text: '💰 Купить USDT', callback_data: 'buy_usdt' }
+          ]
+        ]
+      };
+
+      await this.bot.telegram.sendMessage(
+        telegramId,
+        '💰 Добро пожаловать в обменник USDT!\n\nЯ помогу вам узнать актуальный курс USDT.',
+        { 
+          reply_markup: userKeyboard,
+          parse_mode: 'HTML'
+        }
+      );
+
+      // Отправляем отдельное сообщение с inline-кнопкой
+      await this.bot.telegram.sendMessage(
+        telegramId,
+        '💡 Нажмите кнопку ниже или используйте клавиатуру:',
+        { reply_markup: inlineKeyboard }
+      );
+    }
+  }
+
+  async sendInputKeyboard(telegramId: number, message: string): Promise<void> {
+    // При ожидании ввода - убираем клавиатуру, показываем только поле ввода
+    const removeKeyboard = {
+      remove_keyboard: true as const
+    };
+
+    await this.bot.telegram.sendMessage(
+      telegramId,
+      message,
+      { reply_markup: removeKeyboard }
+    );
+  }
+
+  async sendNoInputKeyboard(telegramId: number, message: string): Promise<void> {
+    // Когда ввод не нужен - показываем клавиатуру с кнопкой "Купить USDT"
+    const noInputKeyboard = {
+      keyboard: [
+        [{ text: '💰 Купить USDT' }]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: false
+    };
+
+    await this.bot.telegram.sendMessage(
+      telegramId,
+      message,
+      { reply_markup: noInputKeyboard }
+    );
+  }
 
   async sendRequestToAdmin(request: ExchangeRequest, user: User): Promise<void> {
     const adminChatId = this.configService.get('ADMIN_CHAT_ID');
@@ -20,7 +107,6 @@ export class AdminNotificationService {
       return;
     }
 
-    const operationText = request.operationType === 'buy' ? 'Покупка' : 'Продажа';
     const userInfo = user.username ? `@${user.username}` : `${user.firstName}`;
     
     // Получаем имя бота для ссылки
@@ -31,8 +117,8 @@ export class AdminNotificationService {
 
 👤 Клиент: ${userInfo}
 📞 Telegram ID: ${user.telegramId}
-💱 Операция: ${operationText}
-💰 Валюта: ${this.formatCurrency(request.currency)}
+💱 Операция: покупка USDT
+💰 Валюта: ₮ USDT
 💵 Сумма: ${request.amount}
 🏙️ Город: ${request.city}
 📅 Дата: ${new Date().toLocaleString('ru-RU')}
@@ -64,14 +150,23 @@ export class AdminNotificationService {
     }
   }
 
-  async sendRateToUser(userId: number, requestId: number, adminMessage: string, currency: string, amount: number, operationType: string): Promise<void> {
+  async sendRateToUser(userId: number, requestId: number, adminMessage: string, currency: string, amount: number): Promise<void> {
     console.log(`Отправляем курс пользователю ${userId} по заявке #${requestId}`);
     
-    const operationText = operationType === 'buy' ? 'покупку' : 'продажу';
+    // Извлекаем курс из сообщения админа
+    const rateMatch = adminMessage.match(/^(\d+(?:\.\d+)?)/);
+    const rate = rateMatch ? parseFloat(rateMatch[1]) : 0;
+    
+    // Рассчитываем стоимость в рублях
+    const totalRub = rate * amount;
     
     const message = `💱 Ответ по заявке #${requestId}
 
 ${adminMessage}
+
+💰 Курс: ${rate} ₽ за 1 USDT
+💵 Сумма: ${amount} USDT
+💸 Итого к оплате: ${totalRub.toFixed(2)} ₽
 
 ⚠️ Курс действителен только 15 минут!
 
@@ -109,6 +204,15 @@ ${adminMessage}
       console.error('Ошибка отправки курса пользователю:', error);
       throw error;
     }
+  }
+
+  async sendExpiredMessage(userId: number, requestId: number): Promise<void> {
+    const message = `⏰ Время действия курса по заявке #${requestId} истекло.
+
+Курс больше не действителен. Для получения нового курса используйте кнопку "💰 Купить USDT" на клавиатуре.`;
+
+    // Отправляем обычную клавиатуру без возможности ввода
+    await this.sendNoInputKeyboard(userId, message);
   }
 
   async updateAdminMessage(requestId: number, statusText: string): Promise<void> {
