@@ -113,15 +113,15 @@ export class AdminNotificationService {
     const botInfo = await this.bot.telegram.getMe();
     const botUsername = botInfo.username;
 
-    const message = `🔔 Новая заявка #${request.id}
+    const message = `<b>🔔 Новая заявка #${request.id}</b>
 
-👤 Клиент: ${userInfo}
-📞 Telegram ID: ${user.telegramId}
-💱 Операция: покупка USDT
-💰 Валюта: ₮ USDT
-💵 Сумма: ${request.amount}
-🏙️ Город: ${request.city}
-📅 Дата: ${new Date().toLocaleString('ru-RU')}
+<b>👤 Клиент:</b> ${userInfo}
+<b>📞 Telegram ID:</b> ${user.telegramId}
+<b>💱 Операция:</b> покупка USDT
+<b>💰 Валюта:</b> ₮ USDT
+<b>💵 Сумма:</b> ${request.amount}
+<b>🏙️ Город:</b> ${request.city}
+<b>📅 Дата:</b> ${new Date().toLocaleString('ru-RU')}
 
 🤖 Для ответа используйте команду /admin в боте`;
 
@@ -130,6 +130,7 @@ export class AdminNotificationService {
         adminChatId,
         message,
         {
+          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
               [
@@ -160,15 +161,15 @@ export class AdminNotificationService {
     // Рассчитываем стоимость в рублях
     const totalRub = rate * amount;
     
-    const message = `💱 Ответ по заявке #${requestId}
+    const message = `<b>💱 Ответ по заявке #${requestId}</b>
 
 ${adminMessage}
 
-💰 Курс: ${rate} ₽ за 1 USDT
-💵 Сумма: ${amount} USDT
-💸 Итого к оплате: ${totalRub.toFixed(2)} ₽
+<b>💰 Курс: ${rate} ₽ за 1 USDT</b>
+<b>💵 Сумма: ${amount} USDT</b>
+<b>💸 Итого к оплате: ${totalRub.toFixed(2)} ₽</b>
 
-⚠️ Курс действителен только 15 минут!
+    <b>⚠️ Курс действителен только 10 минут!</b>
 
 Что вы хотите сделать?`;
 
@@ -198,6 +199,7 @@ ${adminMessage}
     try {
       const result = await this.bot.telegram.sendMessage(userId, message, {
         reply_markup: keyboard,
+        parse_mode: 'HTML',
       });
       console.log(`Сообщение отправлено пользователю ${userId}, message_id: ${result.message_id}`);
     } catch (error) {
@@ -227,7 +229,8 @@ ${adminMessage}
       // Пока просто отправляем новое сообщение
       await this.bot.telegram.sendMessage(
         adminChatId,
-        `📋 Обновление заявки #${requestId}: ${statusText}`
+        `<b>📋 Обновление заявки #${requestId}:</b> ${statusText}`,
+        { parse_mode: 'HTML' }
       );
     } catch (error) {
       console.error('Ошибка обновления сообщения админа:', error);
@@ -260,22 +263,23 @@ ${adminMessage}
       'book': '✅ ЗАБРОНИРОВАЛ заявку',
       'clarify': '💬 Просто уточнял курс',
       'wait_info': '⏳ Ждет дополнительную информацию',
-      'cancelled': '❌ Заявка ОТМЕНЕНА администратором'
+      'cancelled': '❌ Заявка ОТМЕНЕНА администратором',
+      'completed': '✅ ОБМЕН ЗАВЕРШЕН администратором'
     };
 
     const actionText = actionTexts[action] || 'Выполнил действие';
     const userDisplayName = userInfo.username ? `@${userInfo.username}` : userInfo.firstName;
 
-    const message = `📋 Обновление заявки #${requestId}
+    const message = `<b>📋 Обновление заявки #${requestId}</b>
 
-👤 Клиент: ${userDisplayName}
-📞 Telegram ID: ${userInfo.telegramId}
-🎯 Действие: ${actionText}
+<b>👤 Клиент:</b> ${userDisplayName}
+<b>📞 Telegram ID:</b> ${userInfo.telegramId}
+<b>🎯 Действие:</b> ${actionText}
 
-📅 ${new Date().toLocaleString('ru-RU')}`;
+<b>📅</b> ${new Date().toLocaleString('ru-RU')}`;
 
     try {
-      await this.bot.telegram.sendMessage(adminChatId, message);
+      await this.bot.telegram.sendMessage(adminChatId, message, { parse_mode: 'HTML' });
       console.log(`Уведомление о действии пользователя отправлено в админ-канал: заявка #${requestId}, действие: ${action}`);
     } catch (error) {
       console.error('Ошибка отправки уведомления о действии пользователя:', error);

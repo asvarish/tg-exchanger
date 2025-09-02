@@ -52,15 +52,15 @@ export class ExpirationService {
       const now = new Date();
       
       for (const request of waitingRequests) {
-        // Проверяем, прошло ли 15 минут с момента получения курса от админа (confirmedAt)
+        // Проверяем, прошло ли 10 минут с момента получения курса от админа (confirmedAt)
         if (!request.confirmedAt) {
           continue; // Пропускаем заявки без подтверждения
         }
 
         const timeSinceConfirmation = now.getTime() - new Date(request.confirmedAt).getTime();
-        const fifteenMinutes = 15 * 60 * 1000; // 15 минут в миллисекундах
+        const tenMinutes = 10 * 60 * 1000; // 10 минут в миллисекундах
         
-        if (timeSinceConfirmation >= fifteenMinutes) {
+        if (timeSinceConfirmation >= tenMinutes) {
           // Отправляем сообщение об истечении времени и предлагаем создать новую заявку
           await this.adminNotificationService.sendExpiredMessage(
             request.user.telegramId,

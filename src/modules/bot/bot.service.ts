@@ -201,4 +201,8 @@ export class BotService {
       }
     );
   }
+
+  async completeExchange(requestId: number): Promise<void> {
+    await this.exchangeRequestService.setCompletedStatus(requestId);
+  }
 }

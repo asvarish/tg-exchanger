@@ -40,7 +40,7 @@ export class ExchangeRequestService {
   ): Promise<void> {
     try {
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // + 15 минут
+      const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // + 10 минут
 
       const result = await this.exchangeRequestRepository.update(id, {
         exchangeRate,
@@ -103,7 +103,7 @@ export class ExchangeRequestService {
       .leftJoinAndSelect('request.user', 'user')
       .where('request.expiresAt < :now', { now })
       .andWhere('request.status IN (:...statuses)', { 
-        statuses: [RequestStatus.CONFIRMED, RequestStatus.BOOKED, RequestStatus.WAITING_CLIENT] 
+        statuses: [RequestStatus.CONFIRMED, RequestStatus.WAITING_CLIENT] 
       })
       .getMany();
   }
@@ -128,6 +128,12 @@ export class ExchangeRequestService {
       where: { status: RequestStatus.WAITING_CLIENT },
       relations: ['user'],
       order: { updatedAt: 'ASC' },
+    });
+  }
+
+  async setCompletedStatus(id: number): Promise<void> {
+    await this.exchangeRequestRepository.update(id, {
+      status: RequestStatus.COMPLETED,
     });
   }
 }

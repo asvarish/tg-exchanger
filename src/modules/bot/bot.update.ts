@@ -160,35 +160,58 @@ export class BotUpdate {
       return;
     }
 
-    let message = '✅ Подтвержденные заявки (действуют 15 мин):\n\n';
+    let message = '✅ Подтвержденные заявки:\n\n';
     const keyboard = [];
 
     for (const request of confirmedRequests) {
       const statusText = this.getStatusText(request.status);
-      const timeLeft = this.getTimeLeft(request.expiresAt);
       
       // Рассчитываем стоимость в рублях
       const totalRub = request.exchangeRate * request.amount;
       
-      message += `🔹 Заявка #${request.id} ${statusText}\n`;
-      message += `👤 @${request.user.username || request.user.firstName}\n`;
-      message += `💱 Покупка ${request.amount} USDT\n`;
-      message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
-      message += `💸 Итого: ${totalRub.toFixed(2)} ₽\n`;
-      message += `⏰ ${timeLeft}\n`;
-      message += `📅 ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n\n`;
+      message += `<b>🔹 Заявка #${request.id}</b> ${statusText}\n`;
+      message += `<b>👤 Клиент:</b> @${request.user.username || request.user.firstName}\n`;
+      message += `<b>💱 Покупка:</b> ${request.amount} USDT\n`;
+      message += `<b>💰 Курс:</b> ${request.exchangeRate} ₽ за 1 USDT\n`;
+      message += `<b>💸 Итого:</b> ${totalRub.toFixed(2)} ₽\n`;
+      
+      // Для забронированных заявок не показываем таймер
+      if (request.status !== 'booked') {
+        const timeLeft = this.getTimeLeft(request.expiresAt);
+        message += `<b>⏰</b> ${timeLeft}\n`;
+      } else {
+        message += `<b>✅ Забронировано</b> - ожидает завершения\n`;
+      }
+      
+      message += `<b>📅</b> ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n\n`;
 
-      // Добавляем кнопку отмены для каждой заявки
-      keyboard.push([
-        {
-          text: `❌ Отменить заявку #${request.id}`,
-          callback_data: `cancel_${request.id}`,
-        },
-      ]);
+      // Добавляем разные кнопки в зависимости от статуса
+      if (request.status === 'booked') {
+        // Для забронированных - кнопка завершения обмена
+        keyboard.push([
+          {
+            text: `✅ Обмен завершен #${request.id}`,
+            callback_data: `complete_${request.id}`,
+          },
+          {
+            text: `❌ Отменить #${request.id}`,
+            callback_data: `cancel_${request.id}`,
+          },
+        ]);
+      } else {
+        // Для остальных - только отмена
+        keyboard.push([
+          {
+            text: `❌ Отменить заявку #${request.id}`,
+            callback_data: `cancel_${request.id}`,
+          },
+        ]);
+      }
     }
 
     await ctx.editMessageText(message, {
       reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'HTML',
     });
   }
 
@@ -430,6 +453,35 @@ export class BotUpdate {
     await ctx.answerCbQuery('❌ Заявка отклонена');
   }
 
+  @Action(/complete_(\d+)/)
+  async onCompleteRequest(@Ctx() ctx: any) {
+    const requestId = parseInt(ctx.match[1]);
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    if (!user.isAdmin) {
+      await ctx.answerCbQuery('❌ Нет прав');
+      return;
+    }
+
+    // Получаем заявку
+    const request = await this.botService.getRequestById(requestId);
+    if (!request) {
+      await ctx.answerCbQuery('❌ Заявка не найдена');
+      return;
+    }
+
+    // Завершаем обмен
+    await this.botService.completeExchange(requestId);
+    
+    // Уведомляем админа
+    await this.botService.notifyAdminAboutBooking(requestId, 'completed');
+
+    await ctx.answerCbQuery(`✅ Обмен по заявке #${requestId} завершен!`);
+    
+    // Обновляем список подтвержденных заявок
+    await this.showConfirmedRequests(ctx);
+  }
+
   @Action(/cancel_(\d+)/)
   async onCancelRequest(@Ctx() ctx: any) {
     const requestId = parseInt(ctx.match[1]);
@@ -520,7 +572,7 @@ export class BotUpdate {
     if (response.includes('✅ Ваша заявка #') && response.includes('принята!')) {
       await ctx.reply(response);
       // Возвращаем клавиатуру с кнопкой "Купить USDT"
-      await this.botService.sendNoInputKeyboard(ctx.from.id, '💡 Можете создать новую заявку:');
+      await this.botService.sendNoInputKeyboard(ctx.from.id, '');
     } else {
       await ctx.reply(response);
     }
@@ -605,7 +657,7 @@ export class BotUpdate {
     };
 
     await ctx.editMessageText(
-      ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию. Курс действителен 15 минут.',
+      ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию. Курс действителен 10 минут.',
       { reply_markup: keyboard }
     );
 
