@@ -603,13 +603,19 @@ ${rateInfo}
     } else {
       const options = response.includes('Выберите или напишите ваш город') ? {
         reply_markup: {
-          keyboard: [
-            [{ text: 'Москва' }, { text: 'Новосибирск' }],
-            [{ text: 'Санкт-Петербург' }, { text: 'Екатеринбург' }],
-            [{ text: 'Краснодар' }]
-          ],
-          resize_keyboard: true,
-          one_time_keyboard: true
+          inline_keyboard: [
+            [
+              { text: 'Москва', callback_data: 'city_Москва' },
+              { text: 'Новосибирск', callback_data: 'city_Новосибирск' }
+            ],
+            [
+              { text: 'Санкт-Петербург', callback_data: 'city_Санкт-Петербург' },
+              { text: 'Екатеринбург', callback_data: 'city_Екатеринбург' }
+            ],
+            [
+              { text: 'Краснодар', callback_data: 'city_Краснодар' }
+            ]
+          ]
         }
       } : {};
       await ctx.reply(response, options);
@@ -636,8 +642,26 @@ ${rateInfo}
     await ctx.reply(`✅ Ответ отправлен клиенту по заявке #${requestId}`);
   }
 
-
-
+  @Action(/city_(.+)/)
+  async handleCitySelection(@Ctx() ctx: any) {
+    const cityName = ctx.match[1];
+    
+    // Отвечаем на callback, чтобы убрать "загрузку" с кнопки
+    await ctx.answerCbQuery();
+    
+    // Отправляем город как обычное сообщение от пользователя
+    const messageCtx = {
+      ...ctx,
+      message: {
+        ...ctx.message,
+        text: cityName,
+        from: ctx.from
+      }
+    };
+    
+    // Обрабатываем как обычное текстовое сообщение
+    await this.onText(messageCtx, cityName);
+  }
 
 
   @Action(/book_(\d+)/)
