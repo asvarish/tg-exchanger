@@ -649,13 +649,15 @@ ${rateInfo}
     // Отвечаем на callback, чтобы убрать "загрузку" с кнопки
     await ctx.answerCbQuery();
     
-    // Отправляем город как обычное сообщение от пользователя
+    // Создаем правильный контекст для обработки текстового сообщения
     const messageCtx = {
       ...ctx,
       message: {
-        ...ctx.message,
+        message_id: ctx.callbackQuery.message.message_id,
+        date: Math.floor(Date.now() / 1000),
         text: cityName,
-        from: ctx.from
+        from: ctx.from,
+        chat: ctx.chat
       }
     };
     
