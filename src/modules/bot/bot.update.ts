@@ -599,7 +599,7 @@ ${rateInfo}
         one_time_keyboard: false
       };
 
-      await ctx.reply(response, { reply_markup: keyboard });
+      await ctx.reply(response, { reply_markup: keyboard, parse_mode: 'HTML' });
     } else {
       const options = response.includes('Выберите или напишите ваш город') ? {
         reply_markup: {
@@ -615,9 +615,12 @@ ${rateInfo}
             [
               { text: 'Краснодар', callback_data: 'city_Краснодар' }
             ]
-          ]
+          ],
+          parse_mode: 'HTML'
         }
-      } : {};
+      } : {
+        parse_mode: 'HTML'
+      };
       await ctx.reply(response, options);
     }
   }
@@ -670,7 +673,8 @@ ${rateInfo}
           [{ text: '💰 Купить USDT' }]
         ],
         resize_keyboard: true,
-        one_time_keyboard: false
+        one_time_keyboard: false,
+        parse_mode: 'HTML'
       };
 
       await ctx.reply(response, { reply_markup: keyboard });
@@ -689,9 +693,12 @@ ${rateInfo}
             [
               { text: 'Краснодар', callback_data: 'city_Краснодар' }
             ]
-          ]
+          ],
+          parse_mode: 'HTML'
         }
-      } : {};
+      } : {
+        parse_mode: 'HTML'
+      };
       await ctx.reply(response, options);
     }
   }
