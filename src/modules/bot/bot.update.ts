@@ -649,20 +649,51 @@ ${rateInfo}
     // Отвечаем на callback, чтобы убрать "загрузку" с кнопки
     await ctx.answerCbQuery();
     
-    // Создаем правильный контекст для обработки текстового сообщения
-    const messageCtx = {
-      ...ctx,
-      message: {
-        message_id: ctx.callbackQuery.message.message_id,
-        date: Math.floor(Date.now() / 1000),
-        text: cityName,
-        from: ctx.from,
-        chat: ctx.chat
-      }
-    };
+    // Получаем пользователя напрямую из callback контекста
+    const user = await this.userService.findOrCreateUser(ctx.from);
     
-    // Обрабатываем как обычное текстовое сообщение
-    await this.onText(messageCtx, cityName);
+    // Проверяем, отвечает ли админ на заявку
+    const adminRespondingTo = await this.userService.getUserTempData(user.id, 'admin_responding_to');
+    
+    if (adminRespondingTo) {
+      await this.handleAdminResponse(ctx, cityName, adminRespondingTo);
+      return;
+    }
+    
+    // Обрабатываем выбор города напрямую через botService
+    const response = await this.botService.processUserMessage(cityName, ctx.from, user.id);
+    
+    // Отправляем ответ
+    if (response.includes('✅ Ваша заявка #') && response.includes('принята!')) {
+      const keyboard = {
+        keyboard: [
+          [{ text: '💰 Купить USDT' }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: false
+      };
+
+      await ctx.reply(response, { reply_markup: keyboard });
+    } else {
+      const options = response.includes('Выберите или напишите ваш город') ? {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Москва', callback_data: 'city_Москва' },
+              { text: 'Новосибирск', callback_data: 'city_Новосибирск' }
+            ],
+            [
+              { text: 'Санкт-Петербург', callback_data: 'city_Санкт-Петербург' },
+              { text: 'Екатеринбург', callback_data: 'city_Екатеринбург' }
+            ],
+            [
+              { text: 'Краснодар', callback_data: 'city_Краснодар' }
+            ]
+          ]
+        }
+      } : {};
+      await ctx.reply(response, options);
+    }
   }
 
 
