@@ -83,18 +83,20 @@ export class ExpirationService {
     // Рассчитываем стоимость в рублях
     const totalRub = request.exchangeRate * request.amount;
     
-    const message = `⏰ Срок действия курса по заявке #${request.id} истек!
+    const message = `⏰ Срок действия курса по заявке <b>#${request.id}</b> истек!
 
-📋 Заявка: покупка ${request.amount} USDT
-🏙️ Город: ${request.city}
-💱 Курс: ${request.exchangeRate} ₽ за 1 USDT
-💸 Итого: ${totalRub.toFixed(2)} ₽
-📅 Время истечения: ${new Date(request.expiresAt).toLocaleString('ru-RU')}
+📋 Заявка: покупка <b>${request.amount} USDT</b>
+🏙️ Город: <b>${request.city}</b>
+💱 Курс: <b>${request.exchangeRate} ₽</b> за 1 USDT
+💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+📅 Время истечения: <b>${new Date(request.expiresAt).toLocaleString('ru-RU')}</b>
 
-Для получения актуального курса используйте кнопку "💰 Купить USDT" на клавиатуре`;
+Для получения актуального курса используйте кнопку <b>"💰 Купить USDT"</b> на клавиатуре`;
 
     try {
-      await this.bot.telegram.sendMessage(request.user.telegramId, message);
+      await this.bot.telegram.sendMessage(request.user.telegramId, message, {
+        parse_mode: 'HTML'
+      });
       this.logger.log(`Уведомление об истечении отправлено пользователю ${request.user.telegramId} по заявке #${request.id}`);
     } catch (error) {
       this.logger.error(`Ошибка отправки уведомления пользователю ${request.user.telegramId}:`, error);
