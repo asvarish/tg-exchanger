@@ -54,7 +54,9 @@ export class AdminNotificationService {
 
       await this.bot.telegram.sendMessage(
         telegramId,
-        '💰 Добро пожаловать в обменник USDT!<br><br>Я помогу вам узнать актуальный курс USDT.',
+        `💰 Добро пожаловать в обменник USDT!
+
+Я помогу вам узнать актуальный курс USDT.`,
         { 
           reply_markup: userKeyboard,
           parse_mode: 'HTML'
