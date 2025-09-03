@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
@@ -8,6 +8,7 @@ import { RequestStatus } from '../../../common/entities/exchange-request.entity'
 
 @Injectable()
 export class ExpirationService {
+  private logger = new Logger(ExpirationService.name);
   constructor(
     @InjectBot() private readonly bot: Telegraf,
     private readonly exchangeRequestService: ExchangeRequestService,
@@ -23,7 +24,7 @@ export class ExpirationService {
         return;
       }
 
-      console.log(`Найдено ${expiredRequests.length} истекших заявок`);
+      this.logger.log(`Найдено ${expiredRequests.length} истекших заявок`);
 
       // Отправляем уведомления пользователям
       for (const request of expiredRequests) {
@@ -34,9 +35,9 @@ export class ExpirationService {
       const requestIds = expiredRequests.map(r => r.id);
       await this.exchangeRequestService.markAsExpired(requestIds);
 
-      console.log(`Помечено как истекшие: заявки #${requestIds.join(', #')}`);
+      this.logger.log(`Помечено как истекшие: заявки #${requestIds.join(', #')}`);
     } catch (error) {
-      console.error('Ошибка при проверке истекших заявок:', error);
+      this.logger.error('Ошибка при проверке истекших заявок:', error);
     }
   }
 
@@ -70,11 +71,11 @@ export class ExpirationService {
           // Помечаем заявку как истекшую
           await this.exchangeRequestService.updateRequestStatus(request.id, RequestStatus.EXPIRED);
           
-          console.log(`Время ожидания истекло для заявки #${request.id}`);
+          this.logger.log(`Время ожидания истекло для заявки #${request.id}`);
         }
       }
     } catch (error) {
-      console.error('Ошибка при проверке заявок в статусе WAITING_CLIENT:', error);
+      this.logger.error('Ошибка при проверке заявок в статусе WAITING_CLIENT:', error);
     }
   }
 
@@ -94,9 +95,9 @@ export class ExpirationService {
 
     try {
       await this.bot.telegram.sendMessage(request.user.telegramId, message);
-      console.log(`Уведомление об истечении отправлено пользователю ${request.user.telegramId} по заявке #${request.id}`);
+      this.logger.log(`Уведомление об истечении отправлено пользователю ${request.user.telegramId} по заявке #${request.id}`);
     } catch (error) {
-      console.error(`Ошибка отправки уведомления пользователю ${request.user.telegramId}:`, error);
+      this.logger.error(`Ошибка отправки уведомления пользователю ${request.user.telegramId}:`, error);
     }
   }
 }

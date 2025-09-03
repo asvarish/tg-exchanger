@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
@@ -8,6 +8,7 @@ import { InlineKeyboardMarkup } from 'telegraf/types';
 
 @Injectable()
 export class AdminNotificationService {
+  private logger = new Logger(AdminNotificationService.name);
   constructor(
     @InjectBot() private bot: Telegraf,
     private configService: ConfigService,
@@ -53,7 +54,7 @@ export class AdminNotificationService {
 
       await this.bot.telegram.sendMessage(
         telegramId,
-        '💰 Добро пожаловать в обменник USDT!\n\nЯ помогу вам узнать актуальный курс USDT.',
+        '💰 Добро пожаловать в обменник USDT!<br><br>Я помогу вам узнать актуальный курс USDT.',
         { 
           reply_markup: userKeyboard,
           parse_mode: 'HTML'
@@ -103,7 +104,7 @@ export class AdminNotificationService {
     const adminChatId = this.configService.get('ADMIN_CHAT_ID');
     
     if (!adminChatId) {
-      console.error('ADMIN_CHAT_ID не настроен в .env файле');
+      this.logger.error('ADMIN_CHAT_ID не настроен в .env файле');
       return;
     }
 
@@ -113,15 +114,15 @@ export class AdminNotificationService {
     const botInfo = await this.bot.telegram.getMe();
     const botUsername = botInfo.username;
 
-    const message = `<b>🔔 Новая заявка #${request.id}</b>
+    const message = `🔔 Новая заявка <b>#${request.id}</b>
 
-<b>👤 Клиент:</b> ${userInfo}
-<b>📞 Telegram ID:</b> ${user.telegramId}
-<b>💱 Операция:</b> покупка USDT
-<b>💰 Валюта:</b> ₮ USDT
-<b>💵 Сумма:</b> ${request.amount}
-<b>🏙️ Город:</b> ${request.city}
-<b>📅 Дата:</b> ${new Date().toLocaleString('ru-RU')}
+👤 Клиент: <b>${userInfo}</b>
+📞 Telegram ID: <b>${user.telegramId}</b>
+💱 Операция: <b>покупка USDT</b>
+💰 Валюта: <b>₮ USDT</b>
+💵 Сумма: <b>${request.amount}</b>
+🏙️ Город: <b>${request.city}</b>
+📅 Дата: <b>${new Date().toLocaleString('ru-RU')}</b>
 
 🤖 Для ответа используйте команду /admin в боте`;
 
@@ -147,12 +148,12 @@ export class AdminNotificationService {
       // Сохраним ID сообщения для последующего редактирования
       await this.saveAdminMessageId(request.id, sentMessage.message_id);
     } catch (error) {
-      console.error('Ошибка отправки сообщения администратору:', error);
+      this.logger.error('Ошибка отправки сообщения администратору:', error);
     }
   }
 
   async sendRateToUser(userId: number, requestId: number, adminMessage: string, currency: string, amount: number): Promise<void> {
-    console.log(`Отправляем курс пользователю ${userId} по заявке #${requestId}`);
+    this.logger.log(`Отправляем курс пользователю ${userId} по заявке #${requestId}`);
     
     // Извлекаем курс из сообщения админа
     const rateMatch = adminMessage.match(/^(\d+(?:\.\d+)?)/);
@@ -161,13 +162,13 @@ export class AdminNotificationService {
     // Рассчитываем стоимость в рублях
     const totalRub = rate * amount;
     
-    const message = `<b>💱 Ответ по заявке #${requestId}</b>
+    const message = `💱 Ответ по заявке <b>#${requestId}</b>
 
 ${adminMessage}
 
-<b>💰 Курс: ${rate} ₽ за 1 USDT</b>
-<b>💵 Сумма: ${amount} USDT</b>
-<b>💸 Итого к оплате: ${totalRub.toFixed(2)} ₽</b>
+💰 Курс: <b>${rate} ₽/b> за 1 USDT<
+💵 Сумма: <b>${amount}</b> USDT
+💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>
 
     <b>⚠️ Курс действителен только 10 минут!</b>
 
@@ -201,9 +202,9 @@ ${adminMessage}
         reply_markup: keyboard,
         parse_mode: 'HTML',
       });
-      console.log(`Сообщение отправлено пользователю ${userId}, message_id: ${result.message_id}`);
+      this.logger.log(`Сообщение отправлено пользователю ${userId}, message_id: ${result.message_id}`);
     } catch (error) {
-      console.error('Ошибка отправки курса пользователю:', error);
+      this.logger.error('Ошибка отправки курса пользователю:', error);
       throw error;
     }
   }
@@ -229,11 +230,11 @@ ${adminMessage}
       // Пока просто отправляем новое сообщение
       await this.bot.telegram.sendMessage(
         adminChatId,
-        `<b>📋 Обновление заявки #${requestId}:</b> ${statusText}`,
+        `📋 Обновление заявки <b>#${requestId}:</b> ${statusText}`,
         { parse_mode: 'HTML' }
       );
     } catch (error) {
-      console.error('Ошибка обновления сообщения админа:', error);
+      this.logger.error('Ошибка обновления сообщения админа:', error);
     }
   }
 
@@ -255,7 +256,7 @@ ${adminMessage}
     const adminChatId = this.configService.get('ADMIN_CHAT_ID');
     
     if (!adminChatId) {
-      console.error('ADMIN_CHAT_ID не настроен в .env файле');
+      this.logger.error('ADMIN_CHAT_ID не настроен в .env файле');
       return;
     }
 
@@ -270,25 +271,25 @@ ${adminMessage}
     const actionText = actionTexts[action] || 'Выполнил действие';
     const userDisplayName = userInfo.username ? `@${userInfo.username}` : userInfo.firstName;
 
-    const message = `<b>📋 Обновление заявки #${requestId}</b>
+    const message = `📋 Обновление заявки <b>#${requestId}</b>
 
-<b>👤 Клиент:</b> ${userDisplayName}
-<b>📞 Telegram ID:</b> ${userInfo.telegramId}
-<b>🎯 Действие:</b> ${actionText}
+👤 Клиент: <b>${userDisplayName}</b>
+📞 Telegram ID: <b>${userInfo.telegramId}</b>
+🎯 Действие: <b>${actionText}</b>
 
-<b>📅</b> ${new Date().toLocaleString('ru-RU')}`;
+📅 <b>${new Date().toLocaleString('ru-RU')}</b>`;
 
     try {
       await this.bot.telegram.sendMessage(adminChatId, message, { parse_mode: 'HTML' });
-      console.log(`Уведомление о действии пользователя отправлено в админ-канал: заявка #${requestId}, действие: ${action}`);
+      this.logger.log(`Уведомление о действии пользователя отправлено в админ-канал: заявка #${requestId}, действие: ${action}`);
     } catch (error) {
-      console.error('Ошибка отправки уведомления о действии пользователя:', error);
+      this.logger.error('Ошибка отправки уведомления о действии пользователя:', error);
     }
   }
 
   private async saveAdminMessageId(requestId: number, messageId: number): Promise<void> {
     // Здесь будем сохранять ID сообщения в базу данных
     // Пока просто логируем
-    console.log(`Сохранен ID сообщения ${messageId} для заявки ${requestId}`);
+    this.logger.log(`Сохранен ID сообщения ${messageId} для заявки ${requestId}`);
   }
 }

@@ -1,17 +1,26 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { UserService } from "./services/user.service";
 import { ExchangeRequestService } from "./services/exchange-request.service";
 import { AdminNotificationService } from "./services/admin-notification.service";
 import { UserState } from "../../common/enums/user-state.enum";
 import { InlineKeyboardMarkup, InlineKeyboardButton } from "telegraf/types";
+import { ConfigService } from "@nestjs/config";
+import { Telegraf } from "telegraf";
+import { InjectBot } from "nestjs-telegraf";
 
 @Injectable()
 export class BotService {
+  private logger = new Logger(BotService.name);
+  private groupId: number;
   constructor(
     private userService: UserService,
     private exchangeRequestService: ExchangeRequestService,
-    private adminNotificationService: AdminNotificationService
-  ) {}
+    private adminNotificationService: AdminNotificationService,
+    private configService: ConfigService,
+    @InjectBot() private bot: Telegraf
+  ) {
+    this.groupId = Number(this.configService.get('GROUP_ID')) || -1002803395106;
+  }
 
   async getStartMessage(): Promise<{
     text: string;
@@ -124,18 +133,18 @@ export class BotService {
     fullMessage: string,
     adminName: string
   ): Promise<void> {
-    console.log(
+    this.logger.log(
       `Обработка ответа админа для заявки #${requestId}: rate=${rate}, message="${fullMessage}"`
     );
 
     const request = await this.exchangeRequestService.findById(requestId);
 
     if (!request) {
-      console.error(`Заявка #${requestId} не найдена`);
+      this.logger.error(`Заявка #${requestId} не найдена`);
       throw new Error("Заявка не найдена");
     }
 
-    console.log(
+    this.logger.log(
       `Найдена заявка #${requestId} от пользователя ${request.user.telegramId}`
     );
 
@@ -148,7 +157,7 @@ export class BotService {
         0 // totalAmount не используем пока
       );
 
-      console.log(
+      this.logger.log(
         `Заявка #${requestId} обновлена в БД, отправляем ответ пользователю...`
       );
 
@@ -161,9 +170,9 @@ export class BotService {
         request.amount
       );
 
-      console.log(`Ответ отправлен пользователю ${request.user.telegramId}`);
+      this.logger.log(`Ответ отправлен пользователю ${request.user.telegramId}`);
     } catch (error) {
-      console.error("Ошибка в processAdminResponse:", error);
+      this.logger.error("Ошибка в processAdminResponse:", error);
       throw error;
     }
   }
@@ -204,5 +213,56 @@ export class BotService {
 
   async completeExchange(requestId: number): Promise<void> {
     await this.exchangeRequestService.setCompletedStatus(requestId);
+  }
+
+  async sendMessageToGroupHtml(message: string): Promise<void> {
+    try {
+    await this.bot.telegram.sendMessage(this.groupId, message, {
+        parse_mode: 'HTML'
+      });
+    } catch (error) {
+      this.logger.error(`Ошибка отправки сообщения в группу: ${error}`);
+    }
+  }
+
+
+  async getBookingMessage(requestId: number): Promise<string> {
+    const request = await this.exchangeRequestService.findById(requestId);
+    
+    if (!request) {
+      throw new Error(`Заявка #${requestId} не найдена`);
+    }
+
+    // Основная информация о клиенте
+    const clientName = request.user.username ? `@${request.user.username}` : request.user.firstName;
+    
+    // Статус заявки
+    const statusText = this.getStatusText(request.status);
+    const totalRub = request.exchangeRate * request.amount;
+    let message = `📋 Информация о заявке <b>#${request.id}</b>
+
+👤 Клиент: <b>${clientName}</b>
+📞 Telegram ID: <b>${request.user.telegramId}</b>
+💱 Операция: <b>покупка ${request.amount} USDT</b>
+🏙️ Город: <b>${request.city}</b>
+📊 Статус: <b>${statusText}</b>
+
+💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
+💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>`;
+    return message;
+  }
+
+  private getStatusText(status: string): string {
+    const statusMap = {
+      'pending': '⏳ Ожидает ответа',
+      'processing': '🔄 В обработке', 
+      'confirmed': '✅ Подтверждена',
+      'booked': '📋 Забронирована',
+      'waiting_client': '⏳ Ждет клиента',
+      'expired': '⏰ Истекла',
+      'completed': '✅ Завершена',
+      'cancelled': '❌ Отменена',
+    };
+    return statusMap[status] || status;
   }
 }

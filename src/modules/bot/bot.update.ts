@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Update, Ctx, Start, Command, On, Message, Action } from 'nestjs-telegraf';
 import { BotService } from './bot.service';
 import { UserService } from './services/user.service';
@@ -6,16 +6,20 @@ import { ExchangeRequestService } from './services/exchange-request.service';
 import { UserState } from '../../common/enums/user-state.enum';
 import { RequestStatus } from '../../common/entities/exchange-request.entity';
 import { AdminNotificationService } from './services/admin-notification.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 @Update()
 export class BotUpdate {
+  private logger = new Logger(BotUpdate.name);
   constructor(
     private readonly botService: BotService,
     private readonly userService: UserService,
     private readonly exchangeRequestService: ExchangeRequestService,
     private readonly adminNotificationService: AdminNotificationService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+  }
 
     @Start()
   async startCommand(@Ctx() ctx: any) {
@@ -34,7 +38,7 @@ export class BotUpdate {
 Просто отправьте курс обмена (цифрой) и любую дополнительную информацию.
 
 Например: \`95.5\` или \`95.5 - встреча у метро\``, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
       });
       return;
     }
@@ -121,11 +125,15 @@ export class BotUpdate {
     const keyboard = [];
 
     for (const request of activeRequests) {
-      message += `🔹 Заявка #${request.id}\n`;
-      message += `👤 @${request.user.username || request.user.firstName}\n`;
-      message += `💱 покупка ${request.amount} USDT\n`;
-      message += `🏙️ Город: ${request.city}\n`;
-      message += `📅 ${new Date(request.createdAt).toLocaleString('ru-RU')}\n\n`;
+      const clientName = request.user.username ? `@${request.user.username}` : request.user.firstName;
+      
+      message += `🔹 Заявка <b>#${request.id}</b>
+👤 Клиент: <b>${clientName}</b>
+💱 Покупка: <b>${request.amount} USDT</b>
+🏙️ Город: <b>${request.city}</b>
+📅 <b>${new Date(request.createdAt).toLocaleString('ru-RU')}</b>
+
+`;
 
       keyboard.push([
         {
@@ -168,22 +176,26 @@ export class BotUpdate {
       
       // Рассчитываем стоимость в рублях
       const totalRub = request.exchangeRate * request.amount;
-      
-      message += `<b>🔹 Заявка #${request.id}</b> ${statusText}\n`;
-      message += `<b>👤 Клиент:</b> @${request.user.username || request.user.firstName}\n`;
-      message += `<b>💱 Покупка:</b> ${request.amount} USDT\n`;
-      message += `<b>💰 Курс:</b> ${request.exchangeRate} ₽ за 1 USDT\n`;
-      message += `<b>💸 Итого:</b> ${totalRub.toFixed(2)} ₽\n`;
+      const clientName = request.user.username ? `@${request.user.username}` : request.user.firstName;
       
       // Для забронированных заявок не показываем таймер
+      let timeInfo = '';
       if (request.status !== 'booked') {
         const timeLeft = this.getTimeLeft(request.expiresAt);
-        message += `<b>⏰</b> ${timeLeft}\n`;
+        timeInfo = `⏰ ${timeLeft}`;
       } else {
-        message += `<b>✅ Забронировано</b> - ожидает завершения\n`;
+        timeInfo = '✅ Забронировано - ожидает завершения';
       }
       
-      message += `<b>📅</b> ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n\n`;
+      message += `🔹 Заявка <b>#${request.id}</b> ${statusText}
+👤 Клиент: <b>${clientName}</b>
+💱 Покупка: <b>${request.amount} USDT</b>
+💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
+💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+${timeInfo}
+📅 <b>${new Date(request.confirmedAt).toLocaleString('ru-RU')}</b>
+
+`;
 
       // Добавляем разные кнопки в зависимости от статуса
       if (request.status === 'booked') {
@@ -237,20 +249,24 @@ export class BotUpdate {
     for (const request of recentRequests) {
       const statusText = this.getStatusText(request.status);
       const timeAgo = this.getTimeAgo(request.createdAt);
+      const clientName = request.user.username ? `@${request.user.username}` : request.user.firstName;
       
-      message += `🔹 Заявка #${request.id} ${statusText}\n`;
-      message += `👤 @${request.user.username || request.user.firstName}\n`;
-      message += `💱 Покупка ${request.amount} USDT\n`;
-      message += `🏙️ Город: ${request.city}\n`;
-      message += `📅 ${timeAgo}\n`;
-      
+      let rateInfo = '';
       if (request.exchangeRate) {
         // Рассчитываем стоимость в рублях
         const totalRub = request.exchangeRate * request.amount;
-        message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
-        message += `💸 Итого: ${totalRub.toFixed(2)} ₽\n`;
+        rateInfo = `💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
+💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+`;
       }
-      message += '\n';
+      
+      message += `🔹 Заявка <b>#${request.id}</b> ${statusText}
+👤 Клиент: <b>${clientName}</b>
+💱 Покупка: <b>${request.amount} USDT</b>
+🏙️ Город: <b>${request.city}</b>
+📅 <b>${timeAgo}</b>
+${rateInfo}
+`;
 
       // Добавляем кнопку просмотра деталей
       keyboard.push([
@@ -316,25 +332,30 @@ export class BotUpdate {
 
     const statusText = this.getStatusText(request.status);
     const timeAgo = this.getTimeAgo(request.createdAt);
+    const clientName = request.user.username ? `@${request.user.username}` : request.user.firstName;
     
-    let message = `📋 Детали заявки #${request.id}\n\n`;
-    message += `👤 Клиент: @${request.user.username || request.user.firstName}\n`;
-    message += `📞 Telegram ID: ${request.user.telegramId}\n`;
-    message += `💱 Операция: Покупка ${request.amount} USDT\n`;
-    message += `🏙️ Город: ${request.city}\n`;
-    message += `📅 Создана: ${timeAgo}\n`;
-    message += `📊 Статус: ${statusText}\n`;
+    let message = `📋 Детали заявки <b>#${request.id}</b>
+
+👤 Клиент: <b>${clientName}</b>
+📞 Telegram ID: <b>${request.user.telegramId}</b>
+💱 Операция: <b>Покупка ${request.amount} USDT</b>
+🏙️ Город: <b>${request.city}</b>
+📅 Создана: <b>${timeAgo}</b>
+📊 Статус: <b>${statusText}</b>
+`;
     
     if (request.exchangeRate) {
       // Рассчитываем стоимость в рублях
       const totalRub = request.exchangeRate * request.amount;
-      message += `💰 Курс: ${request.exchangeRate} ₽ за 1 USDT\n`;
-      message += `💸 Итого к оплате: ${totalRub.toFixed(2)} ₽\n`;
-      message += `📅 Подтверждена: ${new Date(request.confirmedAt).toLocaleString('ru-RU')}\n`;
+      message += `💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
+💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>
+📅 Подтверждена: <b>${new Date(request.confirmedAt).toLocaleString('ru-RU')}</b>
+`;
     }
     
     if (request.adminResponse) {
-      message += `💬 Ответ админа: ${request.adminResponse}\n`;
+      message += `💬 Ответ админа: <b>${request.adminResponse}</b>
+`;
     }
 
     const keyboard = {
@@ -439,7 +460,7 @@ export class BotUpdate {
         `❌ Ваша заявка #${requestId} была отклонена администратором.`
       );
     } catch (error) {
-      console.error('Ошибка отправки уведомления об отклонении:', error);
+      this.logger.error('Ошибка отправки уведомления об отклонении:', error);
     }
 
     // Обновляем сообщение в админ-чате
@@ -517,7 +538,7 @@ export class BotUpdate {
 Вы можете создать новую заявку командой /start`
       );
     } catch (error) {
-      console.error('Ошибка отправки уведомления об отмене:', error);
+      this.logger.error('Ошибка отправки уведомления об отмене:', error);
     }
 
     // Обновляем сообщение в чате админа
@@ -536,7 +557,7 @@ export class BotUpdate {
       );
     } catch (error) {
       // Если не удалось отредактировать, просто отвечаем
-      console.error('Ошибка редактирования сообщения:', error);
+      this.logger.error('Ошибка редактирования сообщения:', error);
     }
 
     await ctx.answerCbQuery('❌ Заявка отменена');
@@ -545,7 +566,7 @@ export class BotUpdate {
   @On('text')
   async onText(@Ctx() ctx: any, @Message('text') message: string) {
     // Логируем ID чата для получения админ-чата
-    console.log('Chat ID:', ctx.chat.id, 'Type:', ctx.chat.type);
+    this.logger.log('Chat ID:', ctx.chat.id, 'Type:', ctx.chat.type);
     
     // Сначала получаем пользователя
     const user = await this.userService.findOrCreateUser(ctx.from);
@@ -617,6 +638,7 @@ export class BotUpdate {
 
     // Уведомляем админа о бронировании
     await this.botService.notifyAdminAboutBooking(requestId, 'book');
+    await this.botService.sendMessageToGroupHtml(await this.botService.getBookingMessage(requestId));
 
     await ctx.answerCbQuery('✅ Заявка забронирована!');
   }

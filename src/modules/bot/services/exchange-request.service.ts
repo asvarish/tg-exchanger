@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ExchangeRequest, RequestStatus } from '../../../common/entities/exchange-request.entity';
@@ -11,6 +11,7 @@ export interface CreateExchangeRequestDto {
 
 @Injectable()
 export class ExchangeRequestService {
+  private logger = new Logger(ExchangeRequestService.name);
   constructor(
     @InjectRepository(ExchangeRequest)
     private exchangeRequestRepository: Repository<ExchangeRequest>,
@@ -50,9 +51,9 @@ export class ExchangeRequestService {
         confirmedAt: now,
         expiresAt,
       });
-      console.log(`Обновлена заявка #${id}:`, { exchangeRate, adminResponse, totalAmount, expiresAt });
+      this.logger.log(`Обновлена заявка #${id}:`, { exchangeRate, adminResponse, totalAmount, expiresAt });
     } catch (error) {
-      console.error('Ошибка обновления заявки:', error);
+      this.logger.error('Ошибка обновления заявки:', error);
       throw error;
     }
   }
