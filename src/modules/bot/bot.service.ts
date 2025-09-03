@@ -91,7 +91,7 @@ export class BotService {
     await this.userService.setUserTempData(userId, 'amount', numAmount);
     await this.userService.updateUserState(userId, UserState.ENTERING_CITY);
 
-    return '🏙️ Укажите ваш город:';
+    return '🏙️ Выберите или напишите ваш город:';
   }
 
   private async handleCityInput(city: string, userId: number, telegramUser: any): Promise<string> {

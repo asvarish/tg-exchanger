@@ -601,7 +601,18 @@ ${rateInfo}
 
       await ctx.reply(response, { reply_markup: keyboard });
     } else {
-      await ctx.reply(response);
+      const options = response.includes('Выберите или напишите ваш город') ? {
+        reply_markup: {
+          keyboard: [
+            [{ text: 'Москва' }, { text: 'Новосибирск' }],
+            [{ text: 'Санкт-Петербург' }, { text: 'Екатеринбург' }],
+            [{ text: 'Краснодар' }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      } : {};
+      await ctx.reply(response, options);
     }
   }
 
