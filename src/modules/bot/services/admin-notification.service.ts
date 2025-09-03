@@ -168,7 +168,7 @@ export class AdminNotificationService {
 
 ${adminMessage}
 
-💰 Курс: <b>${rate} ₽/b> за 1 USDT<
+💰 Курс: <b>${rate} ₽/b> за 1 USDT
 💵 Сумма: <b>${amount}</b> USDT
 💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>
 
