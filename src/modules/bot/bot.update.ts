@@ -591,9 +591,15 @@ ${rateInfo}
     
     // Если это сообщение об успешном создании заявки, возвращаем клавиатуру
     if (response.includes('✅ Ваша заявка #') && response.includes('принята!')) {
-      await ctx.reply(response);
-      // Возвращаем клавиатуру с кнопкой "Купить USDT"
-      await this.botService.sendNoInputKeyboard(ctx.from.id, '');
+      const keyboard = {
+        keyboard: [
+          [{ text: '💰 Купить USDT' }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: false
+      };
+
+      await ctx.reply(response, { reply_markup: keyboard });
     } else {
       await ctx.reply(response);
     }
