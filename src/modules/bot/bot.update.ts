@@ -564,6 +564,11 @@ ${rateInfo}
   async onText(@Ctx() ctx: any, @Message('text') message: string) {
     // Логируем ID чата для получения админ-чата
     this.logger.log('Chat ID:', ctx.chat.id, 'Type:', ctx.chat.type);
+
+    // Игнорируем сообщения из нашей группы
+    if (ctx.chat.id === -1002803395106) {
+      return;
+    }
     
     // Сначала получаем пользователя
     const user = await this.userService.findOrCreateUser(ctx.from);

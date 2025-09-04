@@ -64,11 +64,11 @@ export class ExpirationService {
         const tenMinutes = 10 * 60 * 1000; // ${formatNumber(10)} минут в миллисекундах
         
         if (timeSinceConfirmation >= tenMinutes) {
-          // Отправляем сообщение об истечении времени и предлагаем создать новую заявку
-          await this.adminNotificationService.sendExpiredMessage(
-            request.user.telegramId,
-            request.id
-          );
+          // // Отправляем сообщение об истечении времени и предлагаем создать новую заявку
+          // await this.adminNotificationService.sendExpiredMessage(
+          //   request.user.telegramId,
+          //   request.id
+          // );
           
           // Помечаем заявку как истекшую
           await this.exchangeRequestService.updateRequestStatus(request.id, RequestStatus.EXPIRED);
