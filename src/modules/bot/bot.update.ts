@@ -786,13 +786,7 @@ ${rateInfo}
     this.logger.log('newMessage', newMessage);    // Обновляем сообщение пользователя
     await ctx.editMessageText(
       newMessage,
-      { reply_markup: {
-        inline_keyboard: [
-          [{ text: '💰 Купить USDT' }]
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: false
-      } }
+      { reply_markup: undefined }
     );
 
     // Уведомляем админа
