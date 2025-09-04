@@ -5,6 +5,8 @@ import { Telegraf } from 'telegraf';
 import { ExchangeRequest } from '../../../common/entities/exchange-request.entity';
 import { User } from '../../../common/entities/user.entity';
 import { InlineKeyboardMarkup } from 'telegraf/types';
+import { formatUSDT, formatCurrency, formatNumber } from '../../../common/utils/format-number.util';
+import { sendMessageWithKeyboards } from '../../../common/utils/keyboard.util';
 
 @Injectable()
 export class AdminNotificationService {
@@ -122,7 +124,7 @@ export class AdminNotificationService {
 📞 Telegram ID: <b>${user.telegramId}</b>
 💱 Операция: <b>покупка USDT</b>
 💰 Валюта: <b>₮ USDT</b>
-💵 Сумма: <b>${request.amount}</b>
+💵 Сумма: <b>${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
 📅 Дата: <b>${new Date().toLocaleString('ru-RU')}</b>
 
@@ -168,15 +170,15 @@ export class AdminNotificationService {
 
 ${adminMessage}
 
-💰 Курс: <b>${rate} ₽</b> за 1 USDT
-💵 Сумма: <b>${amount}</b> USDT
-💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>
+💰 Курс: <b>${formatCurrency(rate, '₽', 2)}</b> за 1 USDT
+💵 Сумма: <b>${formatUSDT(amount)}</b>
+💸 Итого к оплате: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 
-    <b>⚠️ Курс действителен только 10 минут!</b>
+<b>⚠️ Курс действителен только ${formatNumber(10)} минут!</b>
 
 Что вы хотите сделать?`;
 
-    const keyboard = {
+    const inlineKeyboard = {
       inline_keyboard: [
         [
           {
@@ -200,10 +202,13 @@ ${adminMessage}
     };
 
     try {
-      const result = await this.bot.telegram.sendMessage(userId, message, {
-        reply_markup: keyboard,
-        parse_mode: 'HTML',
-      });
+      const result = await sendMessageWithKeyboards(
+        this.bot,
+        userId,
+        message,
+        inlineKeyboard,
+        { parse_mode: 'HTML' }
+      );
       this.logger.log(`Сообщение отправлено пользователю ${userId}, message_id: ${result.message_id}`);
     } catch (error) {
       this.logger.error('Ошибка отправки курса пользователю:', error);

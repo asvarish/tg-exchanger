@@ -5,8 +5,7 @@ import { UserService } from './services/user.service';
 import { ExchangeRequestService } from './services/exchange-request.service';
 import { UserState } from '../../common/enums/user-state.enum';
 import { RequestStatus } from '../../common/entities/exchange-request.entity';
-import { AdminNotificationService } from './services/admin-notification.service';
-import { ConfigService } from '@nestjs/config';
+import { formatUSDT, formatCurrency, formatNumber } from '../../common/utils/format-number.util';
 
 @Injectable()
 @Update()
@@ -16,8 +15,6 @@ export class BotUpdate {
     private readonly botService: BotService,
     private readonly userService: UserService,
     private readonly exchangeRequestService: ExchangeRequestService,
-    private readonly adminNotificationService: AdminNotificationService,
-    private readonly configService: ConfigService,
   ) {
   }
 
@@ -37,7 +34,7 @@ export class BotUpdate {
 
 Просто отправьте курс обмена (цифрой) и любую дополнительную информацию.
 
-Например: \`95.5\` или \`95.5 - встреча у метро\``, {
+Например: \`${formatNumber(95.5)}\` или \`${formatNumber(95.5)} - встреча у метро\``, {
         parse_mode: 'HTML',
       });
       return;
@@ -129,7 +126,7 @@ export class BotUpdate {
       
       message += `🔹 Заявка <b>#${request.id}</b>
 👤 Клиент: <b>${clientName}</b>
-💱 Покупка: <b>${request.amount} USDT</b>
+💱 Покупка: <b>${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
 📅 <b>${new Date(request.createdAt).toLocaleString('ru-RU')}</b>
 
@@ -189,9 +186,9 @@ export class BotUpdate {
       
       message += `🔹 Заявка <b>#${request.id}</b> ${statusText}
 👤 Клиент: <b>${clientName}</b>
-💱 Покупка: <b>${request.amount} USDT</b>
-💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
-💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+💱 Покупка: <b>${formatUSDT(request.amount)}</b>
+💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
+💸 Итого: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 ${timeInfo}
 📅 <b>${new Date(request.confirmedAt).toLocaleString('ru-RU')}</b>
 
@@ -255,14 +252,14 @@ ${timeInfo}
       if (request.exchangeRate) {
         // Рассчитываем стоимость в рублях
         const totalRub = request.exchangeRate * request.amount;
-        rateInfo = `💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
-💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+        rateInfo = `💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
+💸 Итого: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 `;
       }
       
       message += `🔹 Заявка <b>#${request.id}</b> ${statusText}
 👤 Клиент: <b>${clientName}</b>
-💱 Покупка: <b>${request.amount} USDT</b>
+💱 Покупка: <b>${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
 📅 <b>${timeAgo}</b>
 ${rateInfo}
@@ -338,7 +335,7 @@ ${rateInfo}
 
 👤 Клиент: <b>${clientName}</b>
 📞 Telegram ID: <b>${request.user.telegramId}</b>
-💱 Операция: <b>Покупка ${request.amount} USDT</b>
+💱 Операция: <b>Покупка ${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
 📅 Создана: <b>${timeAgo}</b>
 📊 Статус: <b>${statusText}</b>
@@ -347,8 +344,8 @@ ${rateInfo}
     if (request.exchangeRate) {
       // Рассчитываем стоимость в рублях
       const totalRub = request.exchangeRate * request.amount;
-      message += `💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
-💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>
+      message += `💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
+💸 Итого к оплате: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 📅 Подтверждена: <b>${new Date(request.confirmedAt).toLocaleString('ru-RU')}</b>
 `;
     }
@@ -435,7 +432,7 @@ ${rateInfo}
 
 Просто отправьте курс обмена (цифрой) и любую дополнительную информацию.
 
-Например: \`95.5\` или \`95.5 - встреча у метро\``, {
+Например: \`${formatNumber(95.5)}\` или \`${formatNumber(95.5)} - встреча у метро\``, {
       parse_mode: 'Markdown',
     });
 
@@ -532,7 +529,7 @@ ${rateInfo}
         request.user.telegramId,
         `❌ Ваша заявка #${requestId} была отменена администратором.
 
-📋 Заявка: Покупка ${request.amount} USDT
+📋 Заявка: Покупка ${formatUSDT(request.amount)}
 🏙️ Город: ${request.city}
 
 Вы можете создать новую заявку командой /start`
@@ -550,7 +547,7 @@ ${rateInfo}
 📞 Telegram ID: ${request.user.telegramId}
 💱 Операция: покупка USDT
 💰 Валюта: ₮ USDT
-💵 Сумма: ${request.amount}
+💵 Сумма: ${formatUSDT(request.amount)}
 🏙️ Город: ${request.city}
 📅 Отменена: ${new Date().toLocaleString('ru-RU')}`,
         { reply_markup: undefined }
@@ -629,7 +626,7 @@ ${rateInfo}
     // Извлекаем курс из начала сообщения (первое число)
     const rateMatch = message.match(/^(\d+(?:\.\d+)?)/);
     if (!rateMatch) {
-      await ctx.reply('❌ Сообщение должно начинаться с курса (числом).\nНапример: 95.5 или 95.5 - дополнительная информация');
+      await ctx.reply(`❌ Сообщение должно начинаться с курса (числом).\nНапример: ${formatNumber(95.5)} или 75`);
       return;
     }
 
@@ -711,9 +708,20 @@ ${rateInfo}
     // Обновляем статус заявки на BOOKED
     await this.exchangeRequestService.setBookedStatus(requestId);
 
+    // Убираем текст с предупреждением о времени и кнопками с помощью регулярного выражения
+    const originalMessage = ctx.callbackQuery.message.text;
+    // Ищем текст от предупреждения (⚠️) до конца сообщения
+    const baseMessage = originalMessage.replace(/\s*<b>⚠️.*$/s, '');
+    
+    const newMessage = `${baseMessage}
+
+✅ Заявка забронирована!
+
+<b>С вами свяжется менеджер для уточнения деталей сделки!</b>`;
+
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
-      ctx.callbackQuery.message.text + '\n\n✅ Заявка забронирована!',
+      newMessage,
       { reply_markup: undefined }
     );
 
@@ -728,10 +736,20 @@ ${rateInfo}
   async onClarifyRequest(@Ctx() ctx: any) {
     const requestId = parseInt(ctx.match[1]);
     
+    // Убираем текст с вопросом "Что вы хотите сделать?" до конца сообщения
+    const originalMessage = ctx.callbackQuery.message.text;
+    const newMessage = originalMessage.replace(/\s*Что вы хотите сделать\?.*$/s, '') + '\n\n💬 Спасибо за уточнение курса!';
+    
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
-      ctx.callbackQuery.message.text + '\n\n💬 Спасибо за уточнение курса!',
-      { reply_markup: undefined }
+      newMessage,
+      { reply_markup: {
+        keyboard: [
+          [{ text: '💰 Купить USDT' }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: false
+      } }
     );
 
     // Уведомляем админа
@@ -759,8 +777,12 @@ ${rateInfo}
       ],
     };
 
+    // Убираем текст с вопросом "Что вы хотите сделать?" до конца сообщения
+    const originalMessage = ctx.callbackQuery.message.text;
+    const baseMessage = originalMessage.replace(/\s*Что вы хотите сделать\?.*$/s, '');
+    
     await ctx.editMessageText(
-      ctx.callbackQuery.message.text + '\n\n⏳ Ожидаем дополнительную информацию. Курс действителен 10 минут.',
+      baseMessage + `\n\n⏳ Ожидаем дополнительную информацию. Курс действителен ${formatNumber(10)} минут.`,
       { reply_markup: keyboard }
     );
 

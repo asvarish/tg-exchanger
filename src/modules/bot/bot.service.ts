@@ -7,6 +7,7 @@ import { InlineKeyboardMarkup, InlineKeyboardButton } from "telegraf/types";
 import { ConfigService } from "@nestjs/config";
 import { Telegraf } from "telegraf";
 import { InjectBot } from "nestjs-telegraf";
+import { formatUSDT, formatCurrency } from "../../common/utils/format-number.util";
 
 @Injectable()
 export class BotService {
@@ -85,7 +86,7 @@ export class BotService {
     const numAmount = parseFloat(amount.replace(',', '.'));
 
     if (isNaN(numAmount) || numAmount <= 0) {
-      return 'Пожалуйста, введите корректную сумму USDT (например: 100 или 100.50)';
+      return `Пожалуйста, введите корректную сумму USDT (например: ${formatUSDT(100)} или ${formatUSDT(100.50)})`;
     }
 
     await this.userService.setUserTempData(userId, 'amount', numAmount);
@@ -117,7 +118,7 @@ export class BotService {
     return `✅ Ваша заявка <b>#${request.id}</b> принята!
 
 📋 Детали заявки:
-💱 покупка: <b>${amount} USDT</b>
+💱 покупка: <b>${formatUSDT(amount)}</b>
 🏙️ Город: <b>${city}</b>
 
 ⏳ Ожидайте ответ администратора. Вам придет уведомление с курсом и итоговой суммой.`;
@@ -243,12 +244,12 @@ export class BotService {
 
 👤 Клиент: <b>${clientName}</b>
 📞 Telegram ID: <b>${request.user.telegramId}</b>
-💱 Операция: <b>покупка ${request.amount} USDT</b>
+💱 Операция: <b>покупка ${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
 📊 Статус: <b>${statusText}</b>
 
-💰 Курс: <b>${request.exchangeRate} ₽ за 1 USDT</b>
-💸 Итого к оплате: <b>${totalRub.toFixed(2)} ₽</b>`;
+💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
+💸 Итого к оплате: <b>${formatCurrency(totalRub, '₽', 2)}</b>`;
     return message;
   }
 

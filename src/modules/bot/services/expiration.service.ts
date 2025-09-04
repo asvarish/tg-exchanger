@@ -5,6 +5,8 @@ import { Telegraf } from 'telegraf';
 import { ExchangeRequestService } from './exchange-request.service';
 import { AdminNotificationService } from './admin-notification.service';
 import { RequestStatus } from '../../../common/entities/exchange-request.entity';
+import { formatUSDT, formatCurrency, formatNumber } from '../../../common/utils/format-number.util';
+import { sendMessageWithPersistentKeyboard } from '../../../common/utils/keyboard.util';
 
 @Injectable()
 export class ExpirationService {
@@ -59,7 +61,7 @@ export class ExpirationService {
         }
 
         const timeSinceConfirmation = now.getTime() - new Date(request.confirmedAt).getTime();
-        const tenMinutes = 10 * 60 * 1000; // 10 минут в миллисекундах
+        const tenMinutes = 10 * 60 * 1000; // ${formatNumber(10)} минут в миллисекундах
         
         if (timeSinceConfirmation >= tenMinutes) {
           // Отправляем сообщение об истечении времени и предлагаем создать новую заявку
@@ -85,17 +87,23 @@ export class ExpirationService {
     
     const message = `⏰ Срок действия курса по заявке <b>#${request.id}</b> истек!
 
-📋 Заявка: покупка <b>${request.amount} USDT</b>
+📋 Заявка: покупка <b>${formatUSDT(request.amount)}</b>
 🏙️ Город: <b>${request.city}</b>
-💱 Курс: <b>${request.exchangeRate} ₽</b> за 1 USDT
-💸 Итого: <b>${totalRub.toFixed(2)} ₽</b>
+💱 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)}</b> за 1 USDT
+💸 Итого: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 📅 Время истечения: <b>${new Date(request.expiresAt).toLocaleString('ru-RU')}</b>
 
 Для получения актуального курса используйте кнопку <b>"💰 Купить USDT"</b> на клавиатуре`;
 
     try {
       await this.bot.telegram.sendMessage(request.user.telegramId, message, {
-        parse_mode: 'HTML'
+        parse_mode: 'HTML',
+        reply_markup: {
+        keyboard: [
+          [{ text: '💰 Купить USDT' }]
+        ],  
+        resize_keyboard: true,
+        one_time_keyboard: false
       });
       this.logger.log(`Уведомление об истечении отправлено пользователю ${request.user.telegramId} по заявке #${request.id}`);
     } catch (error) {
