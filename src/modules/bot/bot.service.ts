@@ -216,13 +216,16 @@ export class BotService {
     await this.exchangeRequestService.setCompletedStatus(requestId);
   }
 
-  async sendMessageToGroupHtml(message: string): Promise<void> {
+  async sendMessageToGroupHtml(message: string, keyboard?: InlineKeyboardMarkup): Promise<number | null> {
     try {
-    await this.bot.telegram.sendMessage(this.groupId, message, {
-        parse_mode: 'HTML'
+      const result = await this.bot.telegram.sendMessage(this.groupId, message, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
       });
+      return result.message_id;
     } catch (error) {
       this.logger.error(`Ошибка отправки сообщения в группу: ${error}`);
+      return null;
     }
   }
 
@@ -250,7 +253,43 @@ export class BotService {
 
 💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
 💸 Итого к оплате: <b>${formatCurrency(totalRub, '₽', 2)}</b>`;
+
+    // Добавляем ссылку, если заявка выполнена
+    if (request.status === 'completed' && request.completionLink) {
+      message += `\n\n🔗 Ссылка: ${request.completionLink}`;
+    }
+
     return message;
+  }
+
+  getBookingKeyboard(requestId: number): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Заявка выполнена',
+            callback_data: `complete_request_${requestId}`
+          }
+        ]
+      ]
+    };
+  }
+
+  async updateGroupMessage(messageId: number, text: string, keyboard?: InlineKeyboardMarkup): Promise<void> {
+    try {
+      await this.bot.telegram.editMessageText(
+        this.groupId,
+        messageId,
+        undefined,
+        text,
+        {
+          parse_mode: 'HTML',
+          reply_markup: keyboard
+        }
+      );
+    } catch (error) {
+      this.logger.error(`Ошибка обновления сообщения в группе: ${error}`);
+    }
   }
 
   private getStatusText(status: string): string {
@@ -261,7 +300,7 @@ export class BotService {
       'booked': '📋 Забронирована',
       'waiting_client': '⏳ Ждет клиента',
       'expired': '⏰ Истекла',
-      'completed': '✅ Завершена',
+      'completed': '💰 Оплачена',
       'cancelled': '❌ Отменена',
     };
     return statusMap[status] || status;

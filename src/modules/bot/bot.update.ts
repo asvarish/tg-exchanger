@@ -568,6 +568,13 @@ ${rateInfo}
     // Сначала получаем пользователя
     const user = await this.userService.findOrCreateUser(ctx.from);
     
+    // Проверяем, ожидает ли пользователь ввода ссылки для завершения заявки
+    const completingRequestId = await this.userService.getUserTempData(user.id, 'completing_request_id');
+    if (completingRequestId && await this.userService.getUserState(user.id) === UserState.WAITING_COMPLETION_LINK) {
+      await this.handleCompletionLink(ctx, message, completingRequestId);
+      return;
+    }
+    
     // Проверяем, отвечает ли админ на заявку (используем внутренний ID)
     const adminRespondingTo = await this.userService.getUserTempData(user.id, 'admin_responding_to');
     
@@ -727,9 +734,35 @@ ${rateInfo}
 
     // Уведомляем админа о бронировании
     await this.botService.notifyAdminAboutBooking(requestId, 'book');
-    await this.botService.sendMessageToGroupHtml(await this.botService.getBookingMessage(requestId));
+    const keyboard = this.botService.getBookingKeyboard(requestId);
+    await this.botService.sendMessageToGroupHtml(await this.botService.getBookingMessage(requestId), keyboard);
 
     await ctx.answerCbQuery('✅ Заявка забронирована!');
+  }
+
+  @Action(/complete_request_(\d+)/)
+  async onCompleteRequestFromGroup(@Ctx() ctx: any) {
+    const requestId = parseInt(ctx.match[1]);
+    
+    // Проверяем, что заявка существует и имеет статус 'booked'
+    const request = await this.exchangeRequestService.findById(requestId);
+    if (!request || request.status !== RequestStatus.BOOKED) {
+      await ctx.answerCbQuery('❌ Заявка не найдена или уже обработана!');
+      return;
+    }
+
+    // Получаем пользователя, который нажал кнопку (должен быть админ/менеджер)
+    const user = await this.userService.findOrCreateUser(ctx.from);
+    
+    // Сохраняем ID заявки для последующего связывания со ссылкой
+    await this.userService.setUserTempData(user.id, 'completing_request_id', requestId);
+    await this.userService.updateUserState(user.id, UserState.WAITING_COMPLETION_LINK);
+
+    // Отвечаем на коллбек с инструкцией
+    await ctx.answerCbQuery('✅ Теперь отправьте ссылку в эту группу для подтверждения выполнения');
+    
+    // Дополнительно отправляем сообщение с инструкцией
+    await ctx.reply(`🔗 Для завершения заявки #${requestId} отправьте ссылку в эту группу.`);
   }
 
   @Action(/clarify_(\d+)/)
@@ -804,5 +837,39 @@ ${rateInfo}
 
     // Отправляем клавиатуру с force_reply для ожидания ввода
     await this.botService.sendInputKeyboard(ctx.from.id, '💰 Введите количество USDT, которое хотите купить:');
+  }
+
+  private async handleCompletionLink(@Ctx() ctx: any, message: string, requestId: number) {
+    try {
+      // Проверяем, что это действительно ссылка
+      if (!message.includes('http://') && !message.includes('https://') && !message.includes('t.me/')) {
+        await ctx.reply(`❌ Пожалуйста, отправьте корректную ссылку для заявки #${requestId}`);
+        return;
+      }
+
+      // Обновляем заявку с ссылкой и меняем статус на completed
+      await this.exchangeRequestService.setCompletionLink(requestId, message);
+
+      // Получаем пользователя
+      const user = await this.userService.findOrCreateUser(ctx.from);
+
+      // Очищаем состояние пользователя
+      await this.userService.setUserTempData(user.id, 'completing_request_id', null);
+      await this.userService.updateUserState(user.id, UserState.START);
+
+      // Уведомляем о успешном завершении
+      await ctx.reply(`✅ Заявка #${requestId} помечена как выполненная!\n🔗 Ссылка: ${message}`);
+
+      // Обновляем или отправляем групповое сообщение с обновленной информацией
+      const updatedMessage = await this.botService.getBookingMessage(requestId);
+      // Отправляем новое сообщение без кнопки (так как заявка уже завершена)
+      await this.botService.sendMessageToGroupHtml(
+        `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
+      );
+
+    } catch (error) {
+      this.logger.error('Ошибка при обработке ссылки для завершения:', error);
+      await ctx.reply(`❌ Произошла ошибка при обработке ссылки для заявки #${requestId}`);
+    }
   }
 }

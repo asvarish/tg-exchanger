@@ -47,6 +47,9 @@ export class ExchangeRequest {
   @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date; // Время истечения курса
 
+  @Column({ nullable: true })
+  completionLink: string; // Ссылка для подтверждения выполнения
+
   @Column({ type: 'bigint' })
   userId: number;
 

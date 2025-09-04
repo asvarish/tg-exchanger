@@ -104,7 +104,7 @@ export class ExpirationService {
         ],  
         resize_keyboard: true,
         one_time_keyboard: false
-      });
+      }});
       this.logger.log(`Уведомление об истечении отправлено пользователю ${request.user.telegramId} по заявке #${request.id}`);
     } catch (error) {
       this.logger.error(`Ошибка отправки уведомления пользователю ${request.user.telegramId}:`, error);

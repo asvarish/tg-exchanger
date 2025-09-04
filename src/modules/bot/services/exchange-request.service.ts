@@ -137,4 +137,11 @@ export class ExchangeRequestService {
       status: RequestStatus.COMPLETED,
     });
   }
+
+  async setCompletionLink(id: number, link: string): Promise<void> {
+    await this.exchangeRequestRepository.update(id, {
+      completionLink: link,
+      status: RequestStatus.COMPLETED,
+    });
+  }
 }
