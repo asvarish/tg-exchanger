@@ -564,19 +564,19 @@ ${rateInfo}
   async onText(@Ctx() ctx: any, @Message('text') message: string) {
     // Логируем ID чата для получения админ-чата
     this.logger.log('Chat ID:', ctx.chat.id, 'Type:', ctx.chat.type);
-
-    // Игнорируем сообщения из нашей группы
-    if (ctx.chat.id === -1002803395106) {
-      return;
-    }
-    
+     
     // Сначала получаем пользователя
     const user = await this.userService.findOrCreateUser(ctx.from);
     
-    // Проверяем, ожидает ли пользователь ввода ссылки для завершения заявки
+    // Проверяем, ожидает ли пользователь ввода ссылки для завершения заявки (приоритет для группы)
     const completingRequestId = await this.userService.getUserTempData(user.id, 'completing_request_id');
     if (completingRequestId && await this.userService.getUserState(user.id) === UserState.WAITING_COMPLETION_LINK) {
       await this.handleCompletionLink(ctx, message, completingRequestId);
+      return;
+    }
+
+    // Игнорируем остальные сообщения из нашей группы (кроме ссылок для завершения заявок)
+    if (ctx.chat.id === -1002803395106) {
       return;
     }
     
@@ -787,7 +787,7 @@ ${rateInfo}
     await ctx.editMessageText(
       newMessage,
       { reply_markup: {
-        keyboard: [
+        inline_keyboard: [
           [{ text: '💰 Купить USDT' }]
         ],
         resize_keyboard: true,
