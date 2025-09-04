@@ -144,4 +144,10 @@ export class ExchangeRequestService {
       status: RequestStatus.COMPLETED,
     });
   }
+
+  async setGroupMessageId(id: number, messageId: number): Promise<void> {
+    await this.exchangeRequestRepository.update(id, {
+      groupMessageId: messageId,
+    });
+  }
 }

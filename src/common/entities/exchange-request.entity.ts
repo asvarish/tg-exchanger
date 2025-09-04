@@ -50,6 +50,9 @@ export class ExchangeRequest {
   @Column({ nullable: true })
   completionLink: string; // Ссылка для подтверждения выполнения
 
+  @Column({ type: 'bigint', nullable: true })
+  groupMessageId: number; // ID сообщения в группе с кнопкой
+
   @Column({ type: 'bigint' })
   userId: number;
 

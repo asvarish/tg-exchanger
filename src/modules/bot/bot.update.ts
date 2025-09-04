@@ -715,16 +715,16 @@ ${rateInfo}
     // Обновляем статус заявки на BOOKED
     await this.exchangeRequestService.setBookedStatus(requestId);
 
-    // Убираем текст с предупреждением о времени и кнопками с помощью регулярного выражения
+    // Убираем текст с предупреждением о времени и кнопками
     const originalMessage = ctx.callbackQuery.message.text;
-    // Ищем текст от предупреждения (⚠️) до конца сообщения
-    const baseMessage = originalMessage.replace(/\s*<b>⚠️.*$/s, '');
-    
-    const newMessage = `${baseMessage}
+    // Ищем символ предупреждения и обрезаем до него
+    const warningIndex = originalMessage.indexOf('⚠️');
+    const baseMessage = warningIndex !== -1 ? originalMessage.substring(0, warningIndex).trim() : originalMessage;
 
+    const newMessage = `${baseMessage}
 ✅ Заявка забронирована!
 
-<b>С вами свяжется менеджер для уточнения деталей сделки!</b>`;
+С вами свяжется менеджер для уточнения деталей сделки!`;
 
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
@@ -735,7 +735,12 @@ ${rateInfo}
     // Уведомляем админа о бронировании
     await this.botService.notifyAdminAboutBooking(requestId, 'book');
     const keyboard = this.botService.getBookingKeyboard(requestId);
-    await this.botService.sendMessageToGroupHtml(await this.botService.getBookingMessage(requestId), keyboard);
+    const messageId = await this.botService.sendMessageToGroupHtml(await this.botService.getBookingMessage(requestId), keyboard);
+    
+    // Сохраняем ID группового сообщения
+    if (messageId) {
+      await this.exchangeRequestService.setGroupMessageId(requestId, messageId);
+    }
 
     await ctx.answerCbQuery('✅ Заявка забронирована!');
   }
@@ -758,11 +763,8 @@ ${rateInfo}
     await this.userService.setUserTempData(user.id, 'completing_request_id', requestId);
     await this.userService.updateUserState(user.id, UserState.WAITING_COMPLETION_LINK);
 
-    // Отвечаем на коллбек с инструкцией
+    // Отвечаем на коллбек с инструкцией (только в уведомлении)
     await ctx.answerCbQuery('✅ Теперь отправьте ссылку в эту группу для подтверждения выполнения');
-    
-    // Дополнительно отправляем сообщение с инструкцией
-    await ctx.reply(`🔗 Для завершения заявки #${requestId} отправьте ссылку в эту группу.`);
   }
 
   @Action(/clarify_(\d+)/)
@@ -771,9 +773,12 @@ ${rateInfo}
     
     // Убираем текст с вопросом "Что вы хотите сделать?" до конца сообщения
     const originalMessage = ctx.callbackQuery.message.text;
-    const newMessage = originalMessage.replace(/\s*Что вы хотите сделать\?.*$/s, '') + '\n\n💬 Спасибо за уточнение курса!';
+    const warningIndex = originalMessage.indexOf('⚠️');
+    const baseMessage = warningIndex !== -1 ? originalMessage.substring(0, warningIndex).trim() : originalMessage;
+    const newMessage = baseMessage + '\n\n💬 Спасибо за уточнение курса!';
     
-    // Обновляем сообщение пользователя
+    this.logger.log('originalMessage', originalMessage);
+    this.logger.log('newMessage', newMessage);    // Обновляем сообщение пользователя
     await ctx.editMessageText(
       newMessage,
       { reply_markup: {
@@ -812,8 +817,12 @@ ${rateInfo}
 
     // Убираем текст с вопросом "Что вы хотите сделать?" до конца сообщения
     const originalMessage = ctx.callbackQuery.message.text;
-    const baseMessage = originalMessage.replace(/\s*Что вы хотите сделать\?.*$/s, '');
+    const warningIndex = originalMessage.indexOf('⚠️');
+    const baseMessage = warningIndex !== -1 ? originalMessage.substring(0, warningIndex).trim() : originalMessage;
+
     
+    this.logger.log('originalMessage', originalMessage);
+    this.logger.log('baseMessage', baseMessage);
     await ctx.editMessageText(
       baseMessage + `\n\n⏳ Ожидаем дополнительную информацию. Курс действителен ${formatNumber(10)} минут.`,
       { reply_markup: keyboard }
@@ -843,7 +852,19 @@ ${rateInfo}
     try {
       // Проверяем, что это действительно ссылка
       if (!message.includes('http://') && !message.includes('https://') && !message.includes('t.me/')) {
-        await ctx.reply(`❌ Пожалуйста, отправьте корректную ссылку для заявки #${requestId}`);
+        // Удаляем сообщение с неправильной ссылкой
+        try {
+          await ctx.deleteMessage();
+        } catch (error) {
+          this.logger.warn('Не удалось удалить сообщение:', error);
+        }
+        return;
+      }
+
+      // Получаем заявку, чтобы найти ID группового сообщения
+      const request = await this.exchangeRequestService.findById(requestId);
+      if (!request) {
+        this.logger.error(`Заявка #${requestId} не найдена`);
         return;
       }
 
@@ -857,19 +878,36 @@ ${rateInfo}
       await this.userService.setUserTempData(user.id, 'completing_request_id', null);
       await this.userService.updateUserState(user.id, UserState.START);
 
-      // Уведомляем о успешном завершении
-      await ctx.reply(`✅ Заявка #${requestId} помечена как выполненная!\n🔗 Ссылка: ${message}`);
+      // Удаляем сообщение пользователя со ссылкой
+      try {
+        await ctx.deleteMessage();
+      } catch (error) {
+        this.logger.warn('Не удалось удалить сообщение со ссылкой:', error);
+      }
 
-      // Обновляем или отправляем групповое сообщение с обновленной информацией
-      const updatedMessage = await this.botService.getBookingMessage(requestId);
-      // Отправляем новое сообщение без кнопки (так как заявка уже завершена)
-      await this.botService.sendMessageToGroupHtml(
-        `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
-      );
+      // Обновляем существующее групповое сообщение
+      if (request.groupMessageId) {
+        const updatedMessage = await this.botService.getBookingMessage(requestId);
+        await this.botService.updateGroupMessage(
+          request.groupMessageId,
+          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
+        );
+      } else {
+        // Если по какой-то причине нет ID сообщения, отправляем новое
+        const updatedMessage = await this.botService.getBookingMessage(requestId);
+        await this.botService.sendMessageToGroupHtml(
+          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
+        );
+      }
 
     } catch (error) {
       this.logger.error('Ошибка при обработке ссылки для завершения:', error);
-      await ctx.reply(`❌ Произошла ошибка при обработке ссылки для заявки #${requestId}`);
+      // Удаляем сообщение с ошибочной ссылкой, если что-то пошло не так
+      try {
+        await ctx.deleteMessage();
+      } catch (deleteError) {
+        this.logger.warn('Не удалось удалить сообщение после ошибки:', deleteError);
+      }
     }
   }
 }
