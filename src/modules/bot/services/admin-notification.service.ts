@@ -168,8 +168,6 @@ export class AdminNotificationService {
     
     const message = `💱 Ответ по заявке <b>#${requestId}</b>
 
-${adminMessage}
-
 💰 Курс: <b>${formatCurrency(rate, '₽', 2)}</b> за 1 USDT
 💵 Сумма: <b>${formatUSDT(amount)}</b>
 💸 Итого к оплате: <b>${formatCurrency(totalRub, '₽', 2)}</b>
