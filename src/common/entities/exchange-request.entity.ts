@@ -53,6 +53,9 @@ export class ExchangeRequest {
   @Column({ type: 'bigint', nullable: true })
   groupMessageId: number; // ID сообщения в группе с кнопкой
 
+  @Column({ type: 'boolean', default: false })
+  courierCollected: boolean; // Флаг того, что курьер забрал деньги
+
   @Column({ type: 'bigint' })
   userId: number;
 

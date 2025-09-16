@@ -284,6 +284,7 @@ ${rateInfo}
 
     await ctx.editMessageText(message, {
       reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'HTML',
     });
   }
 
@@ -700,7 +701,15 @@ ${rateInfo}
               { text: 'Екатеринбург', callback_data: 'city_Екатеринбург' }
             ],
             [
-              { text: 'Краснодар', callback_data: 'city_Краснодар' }
+              { text: 'Краснодар', callback_data: 'city_Краснодар' },
+              { text: 'Ростов-на-Дону', callback_data: 'city_Ростов-на-Дону' }
+            ],
+            [
+              { text: 'Владивосток', callback_data: 'city_Владивосток' },
+              { text: 'Сочи', callback_data: 'city_Сочи' }
+            ],
+            [
+              { text: 'Казань', callback_data: 'city_Казань' }
             ]
           ],
           parse_mode: 'HTML'
@@ -770,6 +779,53 @@ ${rateInfo}
 
     // Отвечаем на коллбек с инструкцией (только в уведомлении)
     await ctx.answerCbQuery('✅ Теперь отправьте ссылку в эту группу для подтверждения выполнения');
+  }
+
+  @Action(/courier_collected_(\d+)/)
+  async onCourierCollected(@Ctx() ctx: any) {
+    const requestId = parseInt(ctx.match[1]);
+    
+    // Проверяем, что заявка существует и имеет статус 'completed'
+    const request = await this.exchangeRequestService.findById(requestId);
+    if (!request || request.status !== RequestStatus.COMPLETED) {
+      await ctx.answerCbQuery('❌ Заявка не найдена или не выполнена!');
+      return;
+    }
+
+    // Проверяем, что деньги еще не забраны курьером
+    if (request.courierCollected) {
+      await ctx.answerCbQuery('❌ Деньги уже отмечены как забранные курьером!');
+      return;
+    }
+
+    // Отмечаем, что курьер забрал деньги
+    await this.exchangeRequestService.setCourierCollected(requestId);
+
+    // Уведомляем клиента
+    try {
+      await ctx.telegram.sendMessage(
+        request.user.telegramId,
+        `💰 Курьер забрал деньги по вашей заявке #${requestId}
+
+✅ Обмен завершен полностью!
+
+Спасибо за использование нашего сервиса! 🙏`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (error) {
+      this.logger.error('Ошибка отправки уведомления клиенту о получении денег курьером:', error);
+    }
+
+    // Обновляем сообщение в группе, убирая кнопку
+    if (request.groupMessageId) {
+      const updatedMessage = await this.botService.getBookingMessage(requestId);
+      await this.botService.updateGroupMessage(
+        request.groupMessageId,
+        `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n💰 ДЕНЬГИ ЗАБРАНЫ КУРЬЕРОМ!\n\n${updatedMessage}`
+      );
+    }
+
+    await ctx.answerCbQuery('✅ Отмечено: курьер забрал деньги');
   }
 
   @Action(/clarify_(\d+)/)
@@ -877,6 +933,28 @@ ${rateInfo}
       await this.userService.setUserTempData(user.id, 'completing_request_id', null);
       await this.userService.updateUserState(user.id, UserState.START);
 
+      // Отправляем сообщение клиенту со ссылкой
+      try {
+        const totalRub = request.exchangeRate * request.amount;
+        await ctx.telegram.sendMessage(
+          request.user.telegramId,
+          `🎉 Ваша заявка <b>#${requestId}</b> оплачена!
+
+📋 Детали заявки:
+💱 Покупка: <b>${formatUSDT(request.amount)}</b>
+💰 Курс: <b>${formatCurrency(request.exchangeRate, '₽', 2)} за 1 USDT</b>
+💸 Итого: <b>${formatCurrency(totalRub, '₽', 2)}</b>
+🏙️ Город: <b>${request.city}</b>
+
+🔗 Ссылка: <b>${message}</b>
+
+Спасибо за использование нашего сервиса! 🙏`,
+          { parse_mode: 'HTML' }
+        );
+      } catch (error) {
+        this.logger.error('Ошибка отправки сообщения клиенту:', error);
+      }
+
       // Удаляем сообщение пользователя со ссылкой
       try {
         await ctx.deleteMessage();
@@ -884,18 +962,22 @@ ${rateInfo}
         this.logger.warn('Не удалось удалить сообщение со ссылкой:', error);
       }
 
-      // Обновляем существующее групповое сообщение
+      // Обновляем существующее групповое сообщение с кнопкой для курьера
       if (request.groupMessageId) {
         const updatedMessage = await this.botService.getBookingMessage(requestId);
+        const courierKeyboard = this.botService.getCourierKeyboard(requestId);
         await this.botService.updateGroupMessage(
           request.groupMessageId,
-          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
+          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`,
+          courierKeyboard
         );
       } else {
         // Если по какой-то причине нет ID сообщения, отправляем новое
         const updatedMessage = await this.botService.getBookingMessage(requestId);
+        const courierKeyboard = this.botService.getCourierKeyboard(requestId);
         await this.botService.sendMessageToGroupHtml(
-          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`
+          `🎉 ЗАЯВКА ВЫПОЛНЕНА!\n\n${updatedMessage}`,
+          courierKeyboard
         );
       }
 

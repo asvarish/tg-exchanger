@@ -150,4 +150,10 @@ export class ExchangeRequestService {
       groupMessageId: messageId,
     });
   }
+
+  async setCourierCollected(id: number): Promise<void> {
+    await this.exchangeRequestRepository.update(id, {
+      courierCollected: true,
+    });
+  }
 }

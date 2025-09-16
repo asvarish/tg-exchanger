@@ -275,6 +275,19 @@ export class BotService {
     };
   }
 
+  getCourierKeyboard(requestId: number): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: '💰 Забрали деньги',
+            callback_data: `courier_collected_${requestId}`
+          }
+        ]
+      ]
+    };
+  }
+
   async updateGroupMessage(messageId: number, text: string, keyboard?: InlineKeyboardMarkup): Promise<void> {
     try {
       await this.bot.telegram.editMessageText(
