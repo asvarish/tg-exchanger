@@ -146,6 +146,7 @@ export class BotUpdate {
 
     await ctx.editMessageText(message, {
       reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'HTML'
     });
   }
 
@@ -466,6 +467,7 @@ ${rateInfo}
       ctx.callbackQuery.message.text + '\n\n❌ ЗАЯВКА ОТКЛОНЕНА',
       {
         reply_markup: undefined,
+        parse_mode: 'HTML'
       }
     );
 
@@ -542,16 +544,16 @@ ${rateInfo}
     // Обновляем сообщение в чате админа
     try {
       await ctx.editMessageText(
-        `❌ Заявка #${requestId} ОТМЕНЕНА
+        `❌ Заявка <b>#${requestId}</b> ОТМЕНЕНА
 
-👤 Клиент: @${request.user.username || request.user.firstName}
-📞 Telegram ID: ${request.user.telegramId}
-💱 Операция: покупка USDT
-💰 Валюта: ₮ USDT
-💵 Сумма: ${formatUSDT(request.amount)}
-🏙️ Город: ${request.city}
-📅 Отменена: ${new Date().toLocaleString('ru-RU')}`,
-        { reply_markup: undefined }
+👤 Клиент: <b>@${request.user.username || request.user.firstName}</b>
+📞 Telegram ID: <b>${request.user.telegramId}</b>
+💱 Операция: <b>покупка USDT</b>
+💰 Валюта: <b>₮ USDT</b>
+💵 Сумма: <b>${formatUSDT(request.amount)}</b>
+🏙️ Город: <b>${request.city}</b>
+📅 Отменена: <b>${new Date().toLocaleString('ru-RU')}</b>`,
+        { reply_markup: undefined, parse_mode: 'HTML' }
       );
     } catch (error) {
       // Если не удалось отредактировать, просто отвечаем
@@ -623,7 +625,15 @@ ${rateInfo}
               { text: 'Екатеринбург', callback_data: 'city_Екатеринбург' }
             ],
             [
-              { text: 'Краснодар', callback_data: 'city_Краснодар' }
+              { text: 'Краснодар', callback_data: 'city_Краснодар' },
+              { text: 'Ростов-на-Дону', callback_data: 'city_Ростов-на-Дону' }
+            ],
+            [
+              { text: 'Владивосток', callback_data: 'city_Владивосток' },
+              { text: 'Сочи', callback_data: 'city_Сочи' }
+            ],
+            [
+              { text: 'Казань', callback_data: 'city_Казань' }
             ]
           ],
           parse_mode: 'HTML'
@@ -743,7 +753,7 @@ ${rateInfo}
     // Обновляем сообщение пользователя
     await ctx.editMessageText(
       newMessage,
-      { reply_markup: undefined }
+      { reply_markup: undefined, parse_mode: 'HTML' }
     );
 
     // Уведомляем админа о бронировании
@@ -807,9 +817,7 @@ ${rateInfo}
         request.user.telegramId,
         `💰 Курьер забрал деньги по вашей заявке #${requestId}
 
-✅ Обмен завершен полностью!
-
-Спасибо за использование нашего сервиса! 🙏`,
+✅ Обмен завершен полностью!`,
         { parse_mode: 'HTML' }
       );
     } catch (error) {
@@ -842,7 +850,7 @@ ${rateInfo}
     this.logger.log('newMessage', newMessage);    // Обновляем сообщение пользователя
     await ctx.editMessageText(
       newMessage,
-      { reply_markup: undefined }
+      { reply_markup: undefined, parse_mode: 'HTML' }
     );
 
     // Уведомляем админа
@@ -946,9 +954,7 @@ ${rateInfo}
 💸 Итого: <b>${formatCurrency(totalRub, '₽', 2)}</b>
 🏙️ Город: <b>${request.city}</b>
 
-🔗 Ссылка: <b>${message}</b>
-
-Спасибо за использование нашего сервиса! 🙏`,
+🔗 Ссылка: <b>${message}</b>`,
           { parse_mode: 'HTML' }
         );
       } catch (error) {
